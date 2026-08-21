@@ -142,10 +142,10 @@ function ddl({ pk }) {
 /** Paises iniciales: los grupos que ya existen mas los destinos habituales. */
 const SEED_COUNTRIES = [
   { id: 'colombia',  name: 'Colombia',  emoji: '🇨🇴', currency: 'COP',  color: '#f9a825', sort_order: 10 },
-  { id: 'peru',      name: 'Peru',      emoji: '🇵🇪', currency: 'PEN',  color: '#d32f2f', sort_order: 20 },
+  { id: 'peru',      name: 'Perú',      emoji: '🇵🇪', currency: 'PEN',  color: '#d32f2f', sort_order: 20 },
   { id: 'chile',     name: 'Chile',     emoji: '🇨🇱', currency: 'CLP',  color: '#1976d2', sort_order: 30 },
   { id: 'brasil',    name: 'Brasil',    emoji: '🇧🇷', currency: 'BRL',  color: '#2e7d32', sort_order: 40 },
-  { id: 'mexico',    name: 'Mexico',    emoji: '🇲🇽', currency: 'MXN',  color: '#00695c', sort_order: 50 },
+  { id: 'mexico',    name: 'México',    emoji: '🇲🇽', currency: 'MXN',  color: '#00695c', sort_order: 50 },
   { id: 'venezuela', name: 'Venezuela', emoji: '🇻🇪', currency: 'VES',  color: '#fbc02d', sort_order: 60 },
   { id: 'ecuador',   name: 'Ecuador',   emoji: '🇪🇨', currency: 'USD',  color: '#0288d1', sort_order: 70 },
   { id: 'usdt',      name: 'USDT',      emoji: '🪙', currency: 'USDT', color: '#26a17b', sort_order: 80 },

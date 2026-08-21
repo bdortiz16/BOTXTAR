@@ -30,6 +30,12 @@ async function seed() {
     );
   }
 
+  // Corrige la ortografia de los nombres iniciales sin pisar los que alguien
+  // haya renombrado a mano.
+  for (const [id, viejo, nuevo] of [['peru', 'Peru', 'Perú'], ['mexico', 'Mexico', 'México']]) {
+    await db.run('UPDATE countries SET name = ? WHERE id = ? AND name = ?', [nuevo, id, viejo]);
+  }
+
   for (const [countryId, names] of Object.entries(SEED_BANKS)) {
     for (const name of names) {
       await db.run(

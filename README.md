@@ -224,12 +224,37 @@ api/index.js      punto de entrada para Vercel
 public/
   index.html      pagina publica de botxtar.com
   app.html        la aplicacion
-test/             68 pruebas, que corren contra SQLite y contra Postgres
+test/             80 pruebas, que corren contra SQLite y contra Postgres
 ```
 
 Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es
 como se declara la clave primaria y la numeracion de los parametros, asi que
 la misma suite de pruebas se ejecuta contra los dos.
+
+### El sistema de diseño
+
+La interfaz sigue las Human Interface Guidelines, y lo que se puede medir esta
+cubierto por pruebas (`test/design.test.js`), no queda a criterio:
+
+- **Contraste**: cada par de color que lleva texto se comprueba contra el
+  minimo de 4.5:1, en tema claro y en oscuro. El violeta de marca se partio en
+  dos tokens porque un mismo color no puede servir de texto sobre fondo oscuro
+  y de relleno con texto blanco encima sin fallar uno de los dos.
+- **Areas tactiles**: 44pt minimo. Un boton pequeño reduce el texto, nunca el
+  area donde se toca.
+- **Escala tipografica**: nueve estilos, ninguno por debajo de los 11pt
+  minimos; el cuerpo se queda en 17pt, que ademas evita que el navegador haga
+  zoom al enfocar un campo.
+- **Claro y oscuro**: colores semanticos con las dos variantes. En oscuro las
+  superficies que avanzan son mas claras que el fondo, que es lo que da la
+  sensacion de profundidad.
+- **Material translucido**: solo en la capa funcional (barra superior, barra
+  de reparto, avisos flotantes), nunca en las tarjetas. Con respaldo solido
+  para navegadores sin `backdrop-filter` y para quien pidio reducir
+  transparencia.
+- **Texto en oracion**, no en mayusculas. El estado de una operacion se dice
+  con palabra ademas de con color.
+- Se respetan `prefers-reduced-motion` y las areas seguras del telefono.
 
 ### Por que el dinero no usa numeros normales
 

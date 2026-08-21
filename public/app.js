@@ -6,6 +6,14 @@
    ========================================================================== */
 
 const $ = (sel, root = document) => root.querySelector(sel);
+
+/** Los estados se muestran con palabra, no solo con color. */
+const STATUS_LABEL = {
+  DRAFT: 'Borrador',
+  SENT: 'Enviada',
+  COMPLETED: 'Pagada',
+  CANCELLED: 'Anulada',
+};
 const view = $('#view');
 
 const state = {
@@ -247,9 +255,9 @@ function renderHome() {
   view.append(h(`
     ${avisos.map((w) => `<div class="alert ${w.level === 'bad' ? 'bad' : ''}">${esc(w.text)}</div>`).join('')}
     <div class="panel">
-      <h2>Fecha de la operacion</h2>
+      <h2>Fecha de la operación</h2>
       <input type="date" id="op-date" value="${esc(state.catalog.today)}">
-      <div class="hint">Todas las operaciones del dia quedan bajo esta fecha en el informe.</div>
+      <div class="hint">Todas las operaciones del día quedan bajo esta fecha en el informe.</div>
     </div>
 
     <span class="badge-title">ENVIOS</span>
@@ -258,7 +266,7 @@ function renderHome() {
     </div>
 
     <div class="panel">
-      <h2>Ultimas operaciones</h2>
+      <h2>Últimas operaciones</h2>
       <div class="oplist" id="recent"><div class="muted small">Cargando…</div></div>
     </div>
   `));
@@ -268,7 +276,7 @@ function renderHome() {
     const missingChat = !c.telegram_chat_id;
     const btn = h(`
       <button class="country" data-id="${esc(c.id)}">
-        <span class="dot" style="background:${esc(c.color)}">${esc(c.emoji || '🌎')}${missingChat ? '<span class="warn-dot" title="Sin grupo de Telegram"></span>' : ''}</span>
+        <span class="dot" style="background:${esc(c.color)}">${esc(c.emoji || '🌎')}${missingChat ? '<span class="warn-dot" role="img" aria-label="Sin grupo de Telegram"></span>' : ''}</span>
         <span class="name">${esc(c.name)}</span>
         <span class="cur">${esc(c.currency)}</span>
       </button>
@@ -279,7 +287,7 @@ function renderHome() {
   const add = h(`
     <button class="country add" id="add-country">
       <span class="dot">＋</span>
-      <span class="name">Otro pais</span>
+      <span class="name">Otro país</span>
       <span class="cur">agregar</span>
     </button>
   `).firstElementChild;
@@ -296,7 +304,7 @@ async function loadRecent() {
     if (!box) return;
     box.innerHTML = '';
     if (!operations.length) {
-      box.append(h('<div class="muted small">Todavia no hay operaciones registradas.</div>'));
+      box.append(h('<div class="muted small">Todavía no hay operaciones registradas.</div>'));
       return;
     }
     for (const op of operations) box.append(opCard(op));
@@ -309,7 +317,7 @@ function opCard(op) {
   const el = h(`
     <button class="opcard" data-id="${op.id}">
       <div class="top">
-        <span class="folio">${esc(op.folio)} <span class="pill ${op.status}">${esc(op.status)}</span></span>
+        <span class="folio">${esc(op.folio)} <span class="pill ${op.status}">${esc(STATUS_LABEL[op.status] || op.status)}</span></span>
         <span class="amt">${esc(fmt(parseAmount(op.dest_amount), dd))} ${esc(op.dest_currency)}</span>
       </div>
       <div class="meta">
@@ -327,11 +335,11 @@ function opCard(op) {
 
 function renderNewCountry() {
   state.screen = 'new-country';
-  setHeader('Nuevo pais', 'Agrega un destino que aun no existe', true);
+  setHeader('Nuevo país', 'Agrega un destino que aún no existe', true);
   view.innerHTML = '';
   view.append(h(`
     <form class="panel" id="nc-form">
-      <h2>Datos del pais</h2>
+      <h2>Datos del país</h2>
       <div class="field">
         <label for="nc-name">Nombre</label>
         <input id="nc-name" required placeholder="Ej: Argentina">
@@ -349,14 +357,14 @@ function renderNewCountry() {
       <div class="field">
         <label for="nc-chat">Chat ID del grupo de Telegram</label>
         <input id="nc-chat" placeholder="-1001234567890" inputmode="text">
-        <div class="hint">Opcional. Sin esto, la operacion usa el grupo de respaldo.
+        <div class="hint">Opcional. Sin esto, la operación usa el grupo de respaldo.
         Para obtenerlo: agrega el bot al grupo y mira Ajustes › Telegram.</div>
       </div>
       <div class="field">
-        <label for="nc-color">Color del circulo</label>
+        <label for="nc-color">Color del círculo</label>
         <input id="nc-color" type="color" value="#3f51b5" style="min-height:48px;padding:4px">
       </div>
-      <button class="btn" type="submit">GUARDAR PAIS</button>
+      <button class="btn" type="submit">Guardar país</button>
     </form>
   `));
   $('#nc-form').addEventListener('submit', async (e) => {
@@ -373,7 +381,7 @@ function renderNewCountry() {
         },
       });
       await refreshCatalog();
-      toast('Pais agregado', 'ok');
+      toast('País agregado', 'ok');
       renderHome();
     } catch (err) {
       toast(err.message, 'bad');
@@ -399,7 +407,7 @@ function renderWizard() {
   state.screen = 'wizard';
   const country = state.catalog.countries.find((c) => c.id === state.draft.origin_country_id);
   const titles = {
-    1: 'Monto y tasa', 2: 'Como se entrega', 3: 'Destinos', 4: 'USDT y cliente', 5: 'Revisar y enviar',
+    1: 'Monto y tasa', 2: 'Cómo se entrega', 3: 'Destinos', 4: 'USDT y cliente', 5: 'Revisar y enviar',
   };
   setHeader(`${country.emoji} ${country.name}`.trim(), `${state.draft.op_date} · paso ${state.step} de 5 · ${titles[state.step]}`, true);
   view.innerHTML = '';
@@ -423,7 +431,7 @@ function stepAmount() {
       <div class="field">
         <label for="f-amount">Monto (${esc(d.origin_currency)})</label>
         <input id="f-amount" value="${esc(d.origin_amount)}" placeholder="10.000">
-        <div class="hint">Escribelo como quieras: el campo separa los miles solo.</div>
+        <div class="hint">Escríbelo como quieras: el campo separa los miles solo.</div>
       </div>
       <div class="field">
         <label for="f-rate">Tasa</label>
@@ -437,7 +445,7 @@ function stepAmount() {
         </select>
       </div>
       <div class="field">
-        <label for="f-dest">Pais de pago</label>
+        <label for="f-dest">País de pago</label>
         <select id="f-dest">${destOptions}</select>
       </div>
     </div>
@@ -448,7 +456,7 @@ function stepAmount() {
       <div class="formula">Escribe el monto y la tasa</div>
     </div>
 
-    <button class="btn" id="next" disabled>SIGUIENTE</button>
+    <button class="btn" id="next" disabled>Siguiente</button>
   `));
 
   const amountEl = attachAmountInput($('#f-amount'), decimalsOf(d.origin_currency));
@@ -529,13 +537,13 @@ function stepDelivery() {
         ${state.calc.rate_mode === 'DIVIDE' ? '÷' : '×'} ${esc(state.calc.rate)}</div>
     </div>
     <div class="panel">
-      <h2>Como se entrega</h2>
+      <h2>Cómo se entrega</h2>
       <div class="choices">
         <button class="choice" type="button" data-t="TRANSFER" aria-pressed="${d.delivery_type === 'TRANSFER'}">
-          <span class="ico">🏦</span><span class="t">TRANSFERENCIA</span>
+          <span class="ico">🏦</span><span class="t">Transferencia</span>
         </button>
         <button class="choice" type="button" data-t="CASH" aria-pressed="${d.delivery_type === 'CASH'}">
-          <span class="ico">💵</span><span class="t">EFECTIVO</span>
+          <span class="ico">💵</span><span class="t">Efectivo</span>
         </button>
       </div>
       <div class="hint mt">La transferencia pide banco y cuenta. El efectivo pide ciudad y punto de entrega.</div>
@@ -582,6 +590,9 @@ const DOC_TYPES = {
 };
 const ACCOUNT_TYPES = ['AHORROS', 'CORRIENTE', 'DIGITAL'];
 
+/** Se guarda en mayusculas, se muestra en oracion. */
+const ACCOUNT_LABEL = { AHORROS: 'Ahorros', CORRIENTE: 'Corriente', DIGITAL: 'Digital' };
+
 function docTypesFor(countryId) {
   return DOC_TYPES[countryId] || ['CC', 'DNI', 'PAS', 'OTRO'];
 }
@@ -604,7 +615,7 @@ function stepDestinations() {
       La suma debe cuadrar exacto con el monto a pagar.</div>
     </div>
     <div class="splitbar" id="splitbar"></div>
-    <button class="btn" id="next" type="button">SIGUIENTE</button>
+    <button class="btn" id="next" type="button">Siguiente</button>
   `));
 
   const list = $('#dest-list');
@@ -638,7 +649,7 @@ function stepDestinations() {
               </select>
             </div>
             <div class="field">
-              <label>Numero</label>
+              <label>Número</label>
               <input data-k="doc_number" value="${esc(dest.doc_number)}" inputmode="numeric">
             </div>
           </div>
@@ -649,13 +660,13 @@ function stepDestinations() {
           </div>
           <div class="row">
             <div class="field">
-              <label>Numero de cuenta</label>
+              <label>Número de cuenta</label>
               <input data-k="account_number" value="${esc(dest.account_number)}" inputmode="numeric">
             </div>
             <div class="field">
               <label>Tipo de cuenta</label>
               <select data-k="account_type">
-                ${ACCOUNT_TYPES.map((t) => `<option ${dest.account_type === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+                ${ACCOUNT_TYPES.map((t) => `<option value="${esc(t)}" ${dest.account_type === t ? 'selected' : ''}>${esc(ACCOUNT_LABEL[t])}</option>`).join('')}
               </select>
             </div>
           </div>
@@ -665,16 +676,16 @@ function stepDestinations() {
             <input data-k="city" value="${esc(dest.city)}" placeholder="Ej: Bogota">
           </div>
           <div class="field">
-            <label>Punto o direccion de entrega</label>
+            <label>Punto o dirección de entrega</label>
             <input data-k="address" value="${esc(dest.address)}" placeholder="Barrio, direccion, referencia">
           </div>
           <div class="row">
             <div class="field">
-              <label>Quien recibe</label>
+              <label>Quién recibe</label>
               <input data-k="contact_name" value="${esc(dest.contact_name)}">
             </div>
             <div class="field">
-              <label>Telefono</label>
+              <label>Teléfono</label>
               <input data-k="contact_phone" value="${esc(dest.contact_phone)}" inputmode="tel">
             </div>
           </div>
@@ -687,7 +698,7 @@ function stepDestinations() {
               </select>
             </div>
             <div class="field">
-              <label>Numero</label>
+              <label>Número</label>
               <input data-k="doc_number" value="${esc(dest.doc_number)}" inputmode="numeric">
             </div>
           </div>
@@ -701,7 +712,7 @@ function stepDestinations() {
           <input data-k="amount" class="amount">
         </div>
         <div class="field">
-          <label>Referencia / nota</label>
+          <label>Referencia o nota</label>
           <input data-k="reference" value="${esc(dest.reference)}" placeholder="Opcional">
         </div>
       </div>
@@ -740,7 +751,7 @@ function stepDestinations() {
       <div><div class="k">${rest < 0n ? 'Sobrante' : 'Restante'}</div>
            <div class="v rest">${esc(fmt(rest < 0n ? -rest : rest, decimals))}</div></div>`;
     $('#next').disabled = rest !== 0n;
-    $('#next').textContent = rest === 0n ? 'SIGUIENTE' : (rest > 0n ? 'FALTA REPARTIR' : 'TE PASASTE DEL TOTAL');
+    $('#next').textContent = rest === 0n ? 'Siguiente' : (rest > 0n ? 'Falta repartir' : 'Te pasaste del total');
   }
 
   $('#add-dest').addEventListener('click', () => {
@@ -783,7 +794,7 @@ function stepExtras() {
       <h2>Venta de USDT (opcional)</h2>
       <div id="usdt-list"></div>
       <button class="btn ghost sm" id="add-usdt" type="button">＋ Agregar venta de USDT</button>
-      <div class="hint mt">Queda dentro de la misma operacion, sale en el mensaje de Telegram y suma en el informe.</div>
+      <div class="hint mt">Queda dentro de la misma operación, sale en el mensaje de Telegram y suma en el informe.</div>
     </div>
     <div class="panel">
       <h2>Cliente y notas</h2>
@@ -799,10 +810,10 @@ function stepExtras() {
       </div>
       <div class="field">
         <label for="f-notes">Notas</label>
-        <textarea id="f-notes" placeholder="Observaciones de la operacion">${esc(d.notes)}</textarea>
+        <textarea id="f-notes" placeholder="Observaciones de la operación">${esc(d.notes)}</textarea>
       </div>
     </div>
-    <button class="btn" id="next" type="button">REVISAR</button>
+    <button class="btn" id="next" type="button">Revisar</button>
   `));
 
   const list = $('#usdt-list');
@@ -821,7 +832,7 @@ function stepExtras() {
           </div>
           <div class="row">
             <div class="field">
-              <label>Cantidad USDT</label>
+              <label>Cantidad de USDT</label>
               <input data-k="quantity" class="qty">
             </div>
             <div class="field">
@@ -846,7 +857,7 @@ function stepExtras() {
             <input data-k="counterparty" value="${esc(sale.counterparty || '')}" placeholder="Ej: Binance / nombre">
           </div>
           <div class="field">
-            <label>Wallet / referencia</label>
+            <label>Wallet o referencia</label>
             <input data-k="wallet" value="${esc(sale.wallet || '')}" placeholder="Opcional">
           </div>
           <div class="calc" style="margin-bottom:0">
@@ -953,12 +964,12 @@ function stepReview() {
       </div>
     </div>
     <div class="panel">
-      <h2>Mensaje que llegara a Telegram</h2>
+      <h2>Mensaje que llegará a Telegram</h2>
       <pre class="tg" id="tg-preview">Calculando vista previa…</pre>
     </div>
     <div class="btnrow">
-      <button class="btn ghost" id="save" type="button">GUARDAR</button>
-      <button class="btn ok" id="send" type="button">ENVIAR ▸</button>
+      <button class="btn ghost" id="save" type="button">Guardar</button>
+      <button class="btn ok" id="send" type="button">Enviar</button>
     </div>
     <div class="spacer"></div>
   `));
@@ -991,7 +1002,7 @@ function stepReview() {
   $('#send').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
-    btn.textContent = 'ENVIANDO…';
+    btn.textContent = 'Enviando…';
     try {
       const op = await save();
       const r = await api(`/operations/${op.id}/send`, { method: 'POST', body: { resend: true } });
@@ -1002,7 +1013,7 @@ function stepReview() {
       toast(err.message, 'bad');
       if (err.data?.text) $('#tg-preview').textContent = err.data.text.replace(/<[^>]+>/g, '');
       btn.disabled = false;
-      btn.textContent = 'ENVIAR ▸';
+      btn.textContent = 'Enviar';
     }
   });
 }
@@ -1029,7 +1040,7 @@ async function openOperation(id) {
           ${op.rate_mode === 'DIVIDE' ? '÷' : '×'} ${esc(op.rate)}</div>
       </div>
       <div class="panel">
-        <h2>Detalle <span class="pill ${op.status}">${esc(op.status)}</span></h2>
+        <h2>Detalle <span class="pill ${op.status}">${esc(STATUS_LABEL[op.status] || op.status)}</span></h2>
         <div class="summary">
           <div class="line"><span class="k">Origen</span><span class="v">${esc(op.origin_country_id)}</span></div>
           <div class="line"><span class="k">Destino</span><span class="v">${esc(op.dest_country_id)}</span></div>
@@ -1047,11 +1058,11 @@ async function openOperation(id) {
         <pre class="tg">${esc((pv.text || '').replace(/<[^>]+>/g, ''))}</pre>
       </div>
       <div class="btnrow">
-        <button class="btn ghost" id="resend" type="button">${op.status === 'SENT' ? 'REENVIAR' : 'ENVIAR'}</button>
-        <button class="btn ok" id="complete" type="button">MARCAR PAGADA</button>
+        <button class="btn ghost" id="resend" type="button">${op.status === 'SENT' ? 'Reenviar' : 'Enviar'}</button>
+        <button class="btn ok" id="complete" type="button">Marcar pagada</button>
       </div>
       <div class="spacer"></div>
-      <button class="btn bad" id="cancel-op" type="button">ANULAR OPERACION</button>
+      <button class="btn bad" id="cancel-op" type="button">Anular operación</button>
     `));
 
     $('#resend').addEventListener('click', async (ev) => {
@@ -1071,9 +1082,9 @@ async function openOperation(id) {
       openOperation(id);
     });
     $('#cancel-op').addEventListener('click', async () => {
-      if (!confirm('Anular esta operacion? No sumara en el informe.')) return;
+      if (!confirm('¿Anular esta operación? No sumará en el informe.')) return;
       await api(`/operations/${id}/status`, { method: 'POST', body: { status: 'CANCELLED' } });
-      toast('Operacion anulada');
+      toast('Operación anulada');
       renderHome();
     });
   } catch (err) {
@@ -1092,7 +1103,7 @@ async function renderReport() {
   view.innerHTML = '';
   view.append(h(`
     <div class="panel">
-      <h2>Rango</h2>
+      <h2>Rango de fechas</h2>
       <div class="row">
         <div class="field"><label for="r-from">Desde</label><input type="date" id="r-from" value="${esc(first)}"></div>
         <div class="field"><label for="r-to">Hasta</label><input type="date" id="r-to" value="${esc(today)}"></div>
@@ -1105,8 +1116,8 @@ async function renderReport() {
         </select>
       </div>
       <div class="btnrow">
-        <button class="btn" id="r-go" type="button">VER</button>
-        <button class="btn ghost" id="r-csv" type="button">CSV</button>
+        <button class="btn" id="r-go" type="button">Ver</button>
+        <button class="btn ghost" id="r-csv" type="button">Exportar CSV</button>
       </div>
     </div>
     <div id="r-out"><div class="muted small center">Elige un rango y toca VER.</div></div>
@@ -1155,7 +1166,7 @@ async function renderReport() {
           </div>
         </div>` : ''}
         <div class="panel">
-          <h2>Por pais</h2>
+          <h2>Por país</h2>
           <div class="summary">${rep.by_country.map((c) => `
             <div class="line">
               <span class="k">${esc(c.emoji)} ${esc(c.name)} · ${c.operations} ops</span>
@@ -1200,14 +1211,14 @@ async function renderSettings() {
       ${status.ok
         ? `<div class="alert" style="background:#1f3b2a;border-color:var(--ok);color:#b6f0cd">
              Conectado como <b>@${esc(status.bot.username)}</b></div>`
-        : `<div class="alert bad">${esc(status.reason || 'Sin conexion')}</div>`}
+        : `<div class="alert bad">${esc(status.reason || 'Sin conexión')}</div>`}
       <div class="hint">Para obtener el chat ID de un grupo: agrega el bot al grupo, escribe un mensaje
       y abre <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code>. El id de un grupo
       empieza por <code>-100</code>.</div>
     </div>
 
     <div class="panel">
-      <h2>Grupo por pais</h2>
+      <h2>Grupo por país</h2>
       <div id="chats"></div>
     </div>
 
@@ -1215,10 +1226,10 @@ async function renderSettings() {
       <h2>Formato del mensaje</h2>
       <div class="choices">
         <button class="choice" type="button" id="p-mejorado">
-          <span class="ico">✨</span><span class="t">MEJORADO</span>
+          <span class="ico">✨</span><span class="t">Mejorado</span>
         </button>
         <button class="choice" type="button" id="p-clasico">
-          <span class="ico">📄</span><span class="t">COMO HOY</span>
+          <span class="ico">📄</span><span class="t">Como hoy</span>
         </button>
       </div>
       <div class="hint mt"><b>Mejorado</b> agrega referencia, tasa, moneda y total, y pone cuentas y
@@ -1246,8 +1257,8 @@ async function renderSettings() {
         Acepta HTML de Telegram (&lt;b&gt;, &lt;code&gt;).</div>
       </div>
       <div class="btnrow">
-        <button class="btn" id="tpl-save" type="button">GUARDAR</button>
-        <button class="btn ghost" id="tpl-reset" type="button">RESTAURAR</button>
+        <button class="btn" id="tpl-save" type="button">Guardar</button>
+        <button class="btn ghost" id="tpl-reset" type="button">Restaurar</button>
       </div>
     </div>
   `));
@@ -1309,11 +1320,11 @@ async function renderSettings() {
 
   view.append(h(`
     <div class="panel">
-      <h2>Sesion</h2>
+      <h2>Sesión</h2>
       <div class="summary">
         <div class="line"><span class="k">Conectado como</span><span class="v">${esc(state.user)}</span></div>
       </div>
-      <button class="btn bad mt" id="logout" type="button">CERRAR SESION</button>
+      <button class="btn bad mt" id="logout" type="button">Cerrar sesión</button>
     </div>
   `));
   $('#logout').addEventListener('click', async () => {
@@ -1332,6 +1343,22 @@ function goBack() {
   }
   renderHome();
 }
+
+/**
+ * Separa la barra superior del contenido solo cuando hay algo desplazado
+ * debajo. Es el mismo efecto de borde que usan las barras del sistema: sin
+ * contenido detras, la barra se funde con el fondo.
+ */
+const topbar = document.querySelector('.topbar');
+let ticking = false;
+window.addEventListener('scroll', () => {
+  if (ticking) return;
+  ticking = true;
+  requestAnimationFrame(() => {
+    topbar.classList.toggle('scrolled', window.scrollY > 2);
+    ticking = false;
+  });
+}, { passive: true });
 
 $('#btn-back').addEventListener('click', goBack);
 $('#btn-report').addEventListener('click', () => renderReport());
