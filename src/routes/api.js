@@ -239,13 +239,51 @@ router.get('/report.csv', (req, res) => {
 /* -------------------------------- ajustes ------------------------------- */
 
 router.get('/settings/template', (req, res) => {
-  res.json({ template: telegram.getTemplate(), default: telegram.DEFAULT_TEMPLATE });
+  res.json({
+    template: telegram.getTemplate(),
+    default: telegram.DEFAULT_TEMPLATE,
+    presets: telegram.PRESETS,
+  });
 });
 
 router.put('/settings/template', (req, res) => {
   const template = telegram.setTemplate(req.body?.template);
   ops.audit(req.user, 'TEMPLATE_UPDATE', null, '');
   res.json({ template });
+});
+
+/** Prueba una plantilla contra una operacion de muestra, sin guardar nada. */
+router.post('/settings/template/preview', (req, res) => {
+  const template = String(req.body?.template ?? '') || telegram.getTemplate();
+  const sample = telegram.sampleOperation();
+  if (req.body?.split) {
+    sample.origin_country = { id: 'peru', name: 'Peru', emoji: '🇵🇪' };
+    sample.origin_country_id = 'peru';
+    sample.origin_currency = 'PEN';
+    sample.origin_amount = '10000.00';
+    sample.rate = '1000';
+    sample.dest_amount = '10000000';
+    sample.transfers = [
+      { position: 1, beneficiary_name: 'Ana Perez', doc_type: 'CC', doc_number: '1088354953',
+        bank_name: 'Bancolombia', account_number: '11548736279', account_type: 'AHORROS',
+        amount: '3000000', currency: 'COP', reference: '' },
+      { position: 2, beneficiary_name: 'Luis Gomez', doc_type: 'CC', doc_number: '1020304050',
+        bank_name: 'Nequi', account_number: '3001234567', account_type: 'DIGITAL',
+        amount: '3000000', currency: 'COP', reference: '' },
+      { position: 3, beneficiary_name: 'Sara Diaz', doc_type: 'CE', doc_number: '778899',
+        bank_name: 'Davivienda', account_number: '9876543210', account_type: 'CORRIENTE',
+        amount: '4000000', currency: 'COP', reference: '' },
+    ];
+    sample.usdt_sales = [{
+      position: 1, quantity: '2500.00', unit_price: '4000', currency: 'COP',
+      gross_amount: '10000000', network: 'TRON', counterparty: 'Binance', wallet: '', reference: '',
+    }];
+  }
+  try {
+    res.json({ text: telegram.renderMessage(sample, { template }) });
+  } catch (err) {
+    throw new ValidationError(`La plantilla tiene un error: ${err.message}`);
+  }
 });
 
 router.get('/telegram/status', wrap(async (req, res) => {

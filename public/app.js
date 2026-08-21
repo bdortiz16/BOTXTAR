@@ -1238,12 +1238,38 @@ async function renderSettings() {
     </div>
 
     <div class="panel">
-      <h2>Plantilla del mensaje</h2>
+      <h2>Formato del mensaje</h2>
+      <div class="choices">
+        <button class="choice" type="button" id="p-mejorado">
+          <span class="ico">✨</span><span class="t">MEJORADO</span>
+        </button>
+        <button class="choice" type="button" id="p-clasico">
+          <span class="ico">📄</span><span class="t">COMO HOY</span>
+        </button>
+      </div>
+      <div class="hint mt"><b>Mejorado</b> agrega referencia, tasa, moneda y total, y pone cuentas y
+      documentos en modo copiar-de-un-toque. <b>Como hoy</b> deja el mensaje exactamente igual al que
+      llega ahora a los grupos.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Vista previa</h2>
+      <div class="btnrow" style="margin-bottom:10px">
+        <button class="btn ghost sm" id="pv-simple" type="button">1 cuenta</button>
+        <button class="btn ghost sm" id="pv-split" type="button">3 cuentas + USDT</button>
+      </div>
+      <pre class="tg" id="tpl-preview">Cargando…</pre>
+    </div>
+
+    <div class="panel">
+      <h2>Plantilla</h2>
       <div class="field">
         <textarea id="tpl" style="min-height:230px;font-family:ui-monospace,monospace;font-size:.82rem">${esc(tpl.template)}</textarea>
-        <div class="hint">Marcadores: {{folio}} {{fecha}} {{pais}} {{pais_destino}} {{monto_origen}}
-        {{moneda_origen}} {{tasa}} {{monto_destino}} {{moneda_destino}} {{tipo}} {{cliente}}
-        {{destinos}} {{usdt}} {{notas}} {{operador}}. Acepta HTML de Telegram (&lt;b&gt;, &lt;code&gt;).</div>
+        <div class="hint">Marcadores: {{folio}} {{fecha}} {{fecha_hora}} {{hora}} {{pais}}
+        {{pais_destino}} {{monto_origen}} {{monto_origen_num}} {{moneda_origen}} {{tasa}}
+        {{monto_destino}} {{monto_destino_num}} {{moneda_destino}} {{tipo}} {{cliente}}
+        {{destinos}} {{destinos_simple}} {{usdt}} {{notas}} {{operador}}.
+        Acepta HTML de Telegram (&lt;b&gt;, &lt;code&gt;).</div>
       </div>
       <div class="btnrow">
         <button class="btn" id="tpl-save" type="button">GUARDAR</button>
@@ -1251,6 +1277,28 @@ async function renderSettings() {
       </div>
     </div>
   `));
+
+  // La vista previa se refresca sola mientras se edita la plantilla.
+  let splitSample = false;
+  let pvTimer;
+  async function refreshPreview() {
+    try {
+      const r = await api('/settings/template/preview', {
+        method: 'POST', body: { template: $('#tpl').value, split: splitSample },
+      });
+      $('#tpl-preview').textContent = r.text.replace(/<[^>]+>/g, '');
+    } catch (err) {
+      $('#tpl-preview').textContent = err.message;
+    }
+  }
+  const queuePreview = () => { clearTimeout(pvTimer); pvTimer = setTimeout(refreshPreview, 250); };
+
+  $('#tpl').addEventListener('input', queuePreview);
+  $('#pv-simple').addEventListener('click', () => { splitSample = false; refreshPreview(); });
+  $('#pv-split').addEventListener('click', () => { splitSample = true; refreshPreview(); });
+  $('#p-mejorado').addEventListener('click', () => { $('#tpl').value = tpl.presets.mejorado; refreshPreview(); });
+  $('#p-clasico').addEventListener('click', () => { $('#tpl').value = tpl.presets.clasico; refreshPreview(); });
+  refreshPreview();
 
   const chats = $('#chats');
   for (const c of state.catalog.countries) {

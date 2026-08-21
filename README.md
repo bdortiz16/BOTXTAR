@@ -95,20 +95,74 @@ Un solo bot atiende todos los paises; lo que cambia es el grupo destino.
 Si el grupo usa temas (foros), guarda ademas el `message_thread_id` del tema
 en el campo correspondiente del pais.
 
-### Plantilla del mensaje
+### Formato del mensaje
 
-El formato del mensaje se edita en **Ajustes › Plantilla**, sin tocar codigo.
-Marcadores disponibles:
+En **Ajustes › Formato del mensaje** hay dos plantillas listas, con vista
+previa en vivo (una cuenta o tres cuentas mas USDT).
+
+**Como hoy** deja el mensaje identico al que llega ahora a los grupos:
 
 ```
-{{folio}} {{fecha}} {{pais}} {{pais_destino}} {{monto_origen}} {{moneda_origen}}
-{{tasa}} {{monto_destino}} {{moneda_destino}} {{tipo}} {{cliente}}
-{{destinos}} {{usdt}} {{notas}} {{operador}}
+NUEVO PAGO 📍: 20/8/2026 13:40:50
+
+Monto: 5100
+
+BANCOLOMBIA
+Juan Ramirez
+AHORROS
+11548736279
+CEDULA
+1088354953
+
+2876400
+```
+
+**Mejorado** agrega lo que hoy no se ve:
+
+```
+📍 NUEVO PAGO · 20260820-007
+🗓 20/8/2026 13:40:50
+🇧🇷 Brasil ➡️ 🇨🇴 Colombia
+
+💵 Monto: 5.100,00 BRL
+📈 Tasa: 564
+💰 Total: 2.876.400 COP
+
+🏦 BANCOLOMBIA
+Juan Ramirez
+AHORROS · 11548736279
+CEDULA 1088354953
+💸 2.876.400 COP
+
+👤 bryan
+```
+
+Que cambia y por que:
+
+- **Referencia** (`20260820-007`) para poder citar un pago concreto en el
+  grupo y encontrarlo despues en el informe.
+- **Tasa y moneda**: hoy el mensaje dice `Monto: 5100` sin decir de que moneda
+  ni a que tasa, asi que no se puede verificar el total desde el grupo.
+- **Total con moneda**, en vez de un numero suelto al final.
+- **Cuentas y documentos en `<code>`**: en Telegram se copian de un toque y
+  dejan de convertirse en enlaces de telefono (que es por lo que hoy salen en
+  azul y al tocarlos abren el marcador).
+- **Fraccionamiento numerado** (`1/3`, `2/3`, `3/3`) con el monto de cada
+  cuenta, para que quien paga sepa cuantas transferencias faltan.
+- **Venta de USDT** y **entregas en efectivo** con su bloque propio.
+
+Se puede editar libremente. Marcadores disponibles:
+
+```
+{{folio}} {{fecha}} {{fecha_hora}} {{hora}} {{pais}} {{pais_destino}}
+{{monto_origen}} {{monto_origen_num}} {{moneda_origen}} {{tasa}}
+{{monto_destino}} {{monto_destino_num}} {{moneda_destino}} {{tipo}}
+{{cliente}} {{destinos}} {{destinos_simple}} {{usdt}} {{notas}} {{operador}}
 ```
 
 Acepta el HTML que admite Telegram (`<b>`, `<i>`, `<code>`). Los bloques
-`{{destinos}}` y `{{usdt}}` se arman solos segun el tipo de entrega y la
-cantidad de cuentas.
+`{{destinos}}` (mejorado) y `{{destinos_simple}}` (como hoy) se arman solos
+segun el tipo de entrega y la cantidad de cuentas.
 
 ---
 
@@ -131,7 +185,7 @@ src/
   routes/api.js  API HTTP
   auth.js        sesion firmada con HMAC, sin dependencias
 public/          interfaz movil (HTML, CSS y JS sin framework)
-test/            35 pruebas: dinero, operaciones, informe y API completa
+test/            43 pruebas: dinero, operaciones, informe y API completa
 ```
 
 ### Por que el dinero no usa numeros normales

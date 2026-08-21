@@ -13,32 +13,66 @@ function esc(s) {
     .replace(/>/g, '&gt;');
 }
 
+/** Etiquetas tal como se escriben en los grupos: "CEDULA", no "C.C.". */
 const DOC_LABELS = {
-  CC: 'C.C.', CE: 'C.E.', NIT: 'NIT', PAS: 'Pasaporte', PPT: 'PPT',
-  DNI: 'DNI', RUT: 'RUT', CPF: 'CPF', CURP: 'CURP', RFC: 'RFC',
+  CC: 'CEDULA', CE: 'CEDULA EXTRANJERIA', NIT: 'NIT', PAS: 'PASAPORTE', PPT: 'PPT',
+  DNI: 'DNI', RUC: 'RUC', RUT: 'RUT', CPF: 'CPF', CNPJ: 'CNPJ',
+  CURP: 'CURP', RFC: 'RFC', INE: 'INE', CI: 'CI', V: 'V', E: 'E', J: 'J',
 };
 
+function docLabel(type) {
+  return DOC_LABELS[String(type || '').toUpperCase()] || String(type || 'DOCUMENTO').toUpperCase();
+}
+
+/** Fecha y hora como las escribe el bot actual: "20/8/2026 13:40:50". */
+function formatDateTime(date = new Date(), tz = config.timezone) {
+  const parts = new Intl.DateTimeFormat('es-CO', {
+    timeZone: tz, day: 'numeric', month: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const g = (t) => parts.find((p) => p.type === t)?.value || '';
+  return `${g('day')}/${g('month')}/${g('year')} ${g('hour')}:${g('minute')}:${g('second')}`;
+}
+
 /**
- * Plantilla por defecto del mensaje que llega al grupo del pais.
+ * Plantillas del mensaje que llega al grupo del pais.
  *
- * Se guarda en `settings` y se puede editar desde la pantalla de ajustes sin
- * tocar codigo, para calcarla al formato que ya usa el grupo.
- * Marcadores disponibles: {{folio}} {{fecha}} {{pais}} {{pais_destino}}
- * {{monto_origen}} {{moneda_origen}} {{tasa}} {{monto_destino}}
- * {{moneda_destino}} {{tipo}} {{cliente}} {{destinos}} {{usdt}}
- * {{notas}} {{operador}}
+ * "mejorado" agrega lo que hoy no se ve (referencia, tasa, moneda, total) y
+ * pone cuentas y documentos en <code>, que en Telegram se copia de un toque y
+ * evita que la app los convierta en enlaces de telefono.
+ *
+ * "clasico" reproduce exactamente el formato que llega hoy a los grupos, para
+ * quien prefiera no cambiar nada.
+ *
+ * Marcadores: {{folio}} {{fecha}} {{fecha_hora}} {{hora}} {{pais}}
+ * {{pais_destino}} {{monto_origen}} {{monto_origen_num}} {{moneda_origen}}
+ * {{tasa}} {{monto_destino}} {{monto_destino_num}} {{moneda_destino}}
+ * {{tipo}} {{cliente}} {{destinos}} {{destinos_simple}} {{usdt}} {{notas}}
+ * {{operador}}
  */
-const DEFAULT_TEMPLATE = `🧾 <b>{{tipo}} · {{folio}}</b>
-📅 {{fecha}}   {{pais}} ➡️ {{pais_destino}}
+const PRESETS = {
+  mejorado: `📍 <b>NUEVO PAGO</b> · <code>{{folio}}</code>
+🗓 {{fecha_hora}}
+{{pais}} ➡️ {{pais_destino}}
 
 💵 Monto: <b>{{monto_origen}} {{moneda_origen}}</b>
 📈 Tasa: <b>{{tasa}}</b>
 💰 Total: <b>{{monto_destino}} {{moneda_destino}}</b>
 {{cliente}}
+
 {{destinos}}
 {{usdt}}
 {{notas}}
-👤 {{operador}}`;
+👤 {{operador}}`,
+
+  clasico: `NUEVO PAGO 📍: {{fecha_hora}}
+
+Monto: {{monto_origen_num}}
+
+{{destinos_simple}}`,
+};
+
+const DEFAULT_TEMPLATE = PRESETS.mejorado;
 
 const SETTING_KEY = 'telegram_template';
 
@@ -58,54 +92,102 @@ function fmt(decimalString, currency) {
   return money.formatAmount(money.parseAmount(decimalString) ?? 0n, currencies.decimalsFor(currency));
 }
 
-/** Bloque con las cuentas / puntos de entrega, numerado si esta fraccionado. */
+/**
+ * Numero sin separadores de miles, como lo escribe el bot actual. Si los
+ * decimales son todos cero se omiten: 5100.00 se escribe 5100.
+ */
+function plain(decimalString, currency) {
+  const out = money.toDecimalString(money.parseAmount(decimalString) ?? 0n, currencies.decimalsFor(currency));
+  return out.replace(/\.0+$/, '');
+}
+
+/**
+ * Bloque de cuentas / puntos de entrega.
+ *
+ * El banco va primero y en mayuscula porque es lo que busca quien va a pagar.
+ * Cuenta y documento van en <code>: en Telegram se copian de un toque y no se
+ * convierten en enlaces de telefono, que es lo que pasa hoy con los numeros
+ * largos.
+ */
 function renderDestinations(op) {
-  const lines = [];
+  const blocks = [];
+
   if (op.delivery_type === 'TRANSFER') {
     const list = op.transfers || [];
-    lines.push(list.length > 1
-      ? `🏦 <b>TRANSFERENCIAS (${list.length} cuentas)</b>`
-      : '🏦 <b>TRANSFERENCIA</b>');
+    const many = list.length > 1;
+    if (many) blocks.push(`🏦 <b>REPARTIDO EN ${list.length} CUENTAS</b>`);
+
     list.forEach((t, i) => {
-      const head = list.length > 1 ? `\n<b>${i + 1}.</b> ` : '\n';
-      const doc = t.doc_number
-        ? `${DOC_LABELS[t.doc_type] || t.doc_type || 'Doc'} ${t.doc_number}`
-        : '';
-      const parts = [
-        `${head}👤 ${esc(t.beneficiary_name)}`,
-        doc ? `🆔 ${esc(doc)}` : '',
-        t.bank_name ? `🏛 ${esc(t.bank_name)}` : '',
-        t.account_number
-          ? `#️⃣ <code>${esc(t.account_number)}</code>${t.account_type ? ` (${esc(t.account_type)})` : ''}`
-          : '',
-        `💸 <b>${esc(fmt(t.amount, t.currency))} ${esc(t.currency)}</b>`,
-        t.reference ? `📝 ${esc(t.reference)}` : '',
-      ].filter(Boolean);
-      lines.push(parts.join('\n'));
+      const head = many ? `<b>${i + 1}/${list.length}</b> · ` : '🏦 ';
+      const lines = [`${head}<b>${esc((t.bank_name || 'BANCO').toUpperCase())}</b>`];
+      if (t.beneficiary_name) lines.push(esc(t.beneficiary_name));
+
+      const cuenta = [
+        t.account_type ? esc(t.account_type) : '',
+        t.account_number ? `<code>${esc(t.account_number)}</code>` : '',
+      ].filter(Boolean).join(' · ');
+      if (cuenta) lines.push(cuenta);
+
+      if (t.doc_number) lines.push(`${esc(docLabel(t.doc_type))} <code>${esc(t.doc_number)}</code>`);
+      lines.push(`💸 <b>${esc(fmt(t.amount, t.currency))} ${esc(t.currency)}</b>`);
+      if (t.reference) lines.push(`📝 ${esc(t.reference)}`);
+      blocks.push(lines.join('\n'));
     });
   } else {
     const list = op.cash_deliveries || [];
-    lines.push(list.length > 1
-      ? `💵 <b>ENTREGAS EN EFECTIVO (${list.length})</b>`
-      : '💵 <b>ENTREGA EN EFECTIVO</b>');
+    const many = list.length > 1;
+    if (many) blocks.push(`💵 <b>${list.length} ENTREGAS EN EFECTIVO</b>`);
+
     list.forEach((c, i) => {
-      const head = list.length > 1 ? `\n<b>${i + 1}.</b> ` : '\n';
-      const doc = c.doc_number
-        ? `${DOC_LABELS[c.doc_type] || c.doc_type || 'Doc'} ${c.doc_number}`
-        : '';
-      const parts = [
-        `${head}📍 ${esc(c.city)}${c.address ? ` — ${esc(c.address)}` : ''}`,
-        c.contact_name ? `👤 ${esc(c.contact_name)}` : '',
-        doc ? `🆔 ${esc(doc)}` : '',
-        c.contact_phone ? `📞 ${esc(c.contact_phone)}` : '',
-        c.scheduled_at ? `🕒 ${esc(c.scheduled_at)}` : '',
-        `💸 <b>${esc(fmt(c.amount, c.currency))} ${esc(c.currency)}</b>`,
-        c.reference ? `📝 ${esc(c.reference)}` : '',
-      ].filter(Boolean);
-      lines.push(parts.join('\n'));
+      const head = many ? `<b>${i + 1}/${list.length}</b> · ` : '💵 ';
+      const lines = [`${head}<b>${esc((c.city || 'EFECTIVO').toUpperCase())}</b>`];
+      if (c.address) lines.push(`📍 ${esc(c.address)}`);
+      if (c.contact_name) lines.push(esc(c.contact_name));
+      if (c.doc_number) lines.push(`${esc(docLabel(c.doc_type))} <code>${esc(c.doc_number)}</code>`);
+      if (c.contact_phone) lines.push(`📞 <code>${esc(c.contact_phone)}</code>`);
+      if (c.scheduled_at) lines.push(`🕒 ${esc(c.scheduled_at)}`);
+      lines.push(`💸 <b>${esc(fmt(c.amount, c.currency))} ${esc(c.currency)}</b>`);
+      if (c.reference) lines.push(`📝 ${esc(c.reference)}`);
+      blocks.push(lines.join('\n'));
     });
   }
-  return lines.join('\n');
+  return blocks.join('\n\n');
+}
+
+/**
+ * Mismo bloque en el formato que llega hoy a los grupos: banco, nombre, tipo
+ * de cuenta, numero, documento, y el monto abajo separado por una linea.
+ */
+function renderDestinationsSimple(op) {
+  const blocks = [];
+
+  if (op.delivery_type === 'TRANSFER') {
+    for (const t of op.transfers || []) {
+      const datos = [
+        esc((t.bank_name || '').toUpperCase()),
+        esc(t.beneficiary_name),
+        esc(t.account_type),
+        esc(t.account_number),
+        t.doc_number ? esc(docLabel(t.doc_type)) : '',
+        esc(t.doc_number),
+      ].filter(Boolean);
+      blocks.push(`${datos.join('\n')}\n\n${esc(plain(t.amount, t.currency))}`);
+    }
+  } else {
+    for (const c of op.cash_deliveries || []) {
+      const datos = [
+        'EFECTIVO',
+        esc((c.city || '').toUpperCase()),
+        esc(c.address),
+        esc(c.contact_name),
+        c.doc_number ? esc(docLabel(c.doc_type)) : '',
+        esc(c.doc_number),
+        esc(c.contact_phone),
+      ].filter(Boolean);
+      blocks.push(`${datos.join('\n')}\n\n${esc(plain(c.amount, c.currency))}`);
+    }
+  }
+  return blocks.join('\n\n');
 }
 
 /** Bloque de venta de USDT; vacio si la operacion no lleva cripto. */
@@ -136,8 +218,10 @@ function renderUsdt(op) {
 }
 
 /** Sustituye los marcadores y limpia lineas vacias sobrantes. */
-function renderMessage(op, { template } = {}) {
+function renderMessage(op, { template, now } = {}) {
   const tpl = template || getTemplate();
+  const stamp = now || (op.sent_at ? new Date(op.sent_at) : new Date());
+  const fechaHora = formatDateTime(stamp);
   const originCurrency = op.origin_currency;
   const destCurrency = op.dest_currency;
   const originName = op.origin_country?.name || op.origin_country_id;
@@ -148,18 +232,23 @@ function renderMessage(op, { template } = {}) {
   const values = {
     folio: esc(op.folio),
     fecha: esc(op.op_date),
+    fecha_hora: esc(fechaHora),
+    hora: esc(fechaHora.split(' ')[1] || ''),
     pais: esc(`${originEmoji} ${originName}`.trim()),
     pais_destino: esc(`${destEmoji} ${destName}`.trim()),
     monto_origen: esc(fmt(op.origin_amount, originCurrency)),
+    monto_origen_num: esc(plain(op.origin_amount, originCurrency)),
     moneda_origen: esc(originCurrency),
     tasa: esc(op.rate),
     monto_destino: esc(fmt(op.dest_amount, destCurrency)),
+    monto_destino_num: esc(plain(op.dest_amount, destCurrency)),
     moneda_destino: esc(destCurrency),
     tipo: op.delivery_type === 'CASH' ? 'EFECTIVO' : 'TRANSFERENCIA',
     cliente: op.client_name
       ? `🙍 Cliente: ${esc(op.client_name)}${op.client_contact ? ` (${esc(op.client_contact)})` : ''}`
       : '',
     destinos: renderDestinations(op),
+    destinos_simple: renderDestinationsSimple(op),
     usdt: renderUsdt(op),
     notas: op.notes ? `\n🗒 ${esc(op.notes)}` : '',
     operador: esc(op.created_by || 'sistema'),
@@ -262,8 +351,41 @@ async function getMe() {
   }
 }
 
+/**
+ * Operacion de muestra para previsualizar una plantilla en Ajustes sin tener
+ * que crear un envio de verdad.
+ */
+function sampleOperation() {
+  return {
+    folio: '20260820-007',
+    op_date: '2026-08-20',
+    origin_country_id: 'brasil',
+    origin_country: { id: 'brasil', name: 'Brasil', emoji: '🇧🇷' },
+    origin_currency: 'BRL',
+    origin_amount: '5100.00',
+    rate: '564',
+    rate_mode: 'MULTIPLY',
+    dest_country_id: 'colombia',
+    dest_country: { id: 'colombia', name: 'Colombia', emoji: '🇨🇴' },
+    dest_currency: 'COP',
+    dest_amount: '2876400',
+    delivery_type: 'TRANSFER',
+    client_name: 'Cliente de ejemplo',
+    client_contact: '',
+    notes: '',
+    created_by: 'bryan',
+    transfers: [{
+      position: 1, beneficiary_name: 'Juan Ramirez', doc_type: 'CC', doc_number: '1088354953',
+      bank_name: 'Bancolombia', account_number: '11548736279', account_type: 'AHORROS',
+      amount: '2876400', currency: 'COP', reference: '',
+    }],
+    cash_deliveries: [],
+    usdt_sales: [],
+  };
+}
+
 module.exports = {
-  DEFAULT_TEMPLATE, getTemplate, setTemplate,
-  renderMessage, renderDestinations, renderUsdt,
-  sendOperation, resolveChat, getMe, esc,
+  PRESETS, DEFAULT_TEMPLATE, getTemplate, setTemplate,
+  renderMessage, renderDestinations, renderDestinationsSimple, renderUsdt,
+  sendOperation, resolveChat, getMe, esc, formatDateTime, docLabel, sampleOperation,
 };

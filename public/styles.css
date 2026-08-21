@@ -101,7 +101,14 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   display: block; font-size: .74rem; text-transform: uppercase; letter-spacing: 1px;
   color: var(--muted); font-weight: 700; margin-bottom: 6px;
 }
-.field .hint { font-size: .74rem; color: var(--muted); margin-top: 5px; }
+.field .hint, .hint {
+  font-size: .74rem; color: var(--muted); margin-top: 5px;
+  overflow-wrap: anywhere;              /* urls y tokens largos no desbordan */
+}
+.hint code, .alert code {
+  background: var(--panel-2); border-radius: 5px; padding: 1px 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .95em;
+}
 
 input, select, textarea {
   width: 100%; min-height: var(--tap);

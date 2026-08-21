@@ -120,7 +120,7 @@ test('el mensaje de Telegram trae las 3 cuentas y la venta de USDT', () => {
 
   assert.match(text, /10\.000,00 PEN/);
   assert.match(text, /10\.000\.000 COP/);
-  assert.match(text, /TRANSFERENCIAS \(3 cuentas\)/);
+  assert.match(text, /REPARTIDO EN 3 CUENTAS/);
   assert.match(text, /Ana Perez/);
   assert.match(text, /Sara Diaz/);
   assert.match(text, /VENTA USDT/);
