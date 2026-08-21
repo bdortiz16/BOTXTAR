@@ -83,10 +83,20 @@ PGTEST_URL=postgres://usuario@host:5432 npm run test:pg   # contra Postgres
 | `DB_FILE` | Ruta del archivo SQLite, solo si no se usa Postgres. |
 | `ALLOW_ANONYMOUS` | Modo sin clave para trastear en local. Se ignora en produccion. |
 
-> En produccion la app **no atiende peticiones** si falta `SESSION_SECRET`,
-> si no hay forma de controlar quien entra, o si corre en serverless sin
-> Postgres. Muestra una pantalla explicando que falta, en vez de perder datos
-> o cerrar sesiones sin motivo aparente.
+> En produccion la app **no atiende peticiones** si falta `SESSION_SECRET` o
+> si no hay forma de controlar quien entra. Muestra una pantalla explicando
+> que falta, en vez de cerrar sesiones sin motivo aparente.
+
+### Modo de prueba (sin base de datos)
+
+Si se despliega en Vercel sin `POSTGRES_URL`, la app **funciona igual** pero
+guarda en `/tmp`, que se borra cuando la instancia se recicla. Sirve para
+revisar la interfaz; no para llevar la contabilidad.
+
+En ese modo la app muestra un aviso rojo permanente en la pantalla principal.
+Se quita solo en cuanto se conecta una base. Para entrar mientras tanto,
+usa las credenciales de `APP_USERS`: son las unicas que sobreviven a que se
+reinicie la instancia.
 
 ### Cuentas
 
@@ -212,7 +222,7 @@ api/index.js      punto de entrada para Vercel
 public/
   index.html      pagina publica de botxtar.com
   app.html        la aplicacion
-test/             67 pruebas, que corren contra SQLite y contra Postgres
+test/             68 pruebas, que corren contra SQLite y contra Postgres
 ```
 
 Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es

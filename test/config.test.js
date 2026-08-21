@@ -18,8 +18,15 @@ const config = require('../src/config');
 test('en produccion avisa de lo que falta antes de atender peticiones', () => {
   const problems = config.productionProblems();
   assert.ok(problems.some((p) => /SESSION_SECRET/.test(p)), 'debe pedir SESSION_SECRET');
-  assert.ok(problems.some((p) => /APP_USERS/.test(p)), 'debe pedir usuarios');
-  assert.ok(problems.some((p) => /POSTGRES_URL/.test(p)), 'debe pedir Postgres en serverless');
+  assert.ok(problems.some((p) => /SIGNUP_CODE|APP_USERS/.test(p)), 'debe pedir como controlar el acceso');
+});
+
+test('sin base de datos en serverless funciona, pero avisa que es temporal', () => {
+  assert.strictEqual(config.ephemeralStorage, true);
+  assert.strictEqual(config.dbFile, '/tmp/botxtar.db',
+    'en serverless solo se puede escribir en /tmp; fuera de ahi la peticion falla');
+  assert.ok(!config.productionProblems().some((p) => /POSTGRES_URL/.test(p)),
+    'falta de base no bloquea el arranque: se avisa en pantalla');
 });
 
 test('la API responde con la lista de lo que falta', async () => {
@@ -33,7 +40,7 @@ test('la API responde con la lista de lo que falta', async () => {
     assert.strictEqual(res.status, 503);
     const body = await res.json();
     assert.strictEqual(body.error, 'Configuracion incompleta');
-    assert.ok(Array.isArray(body.problemas) && body.problemas.length >= 3);
+    assert.ok(Array.isArray(body.problemas) && body.problemas.length >= 2);
   } finally {
     await new Promise((r) => server.close(r));
   }
@@ -52,7 +59,6 @@ test('un navegador recibe una pantalla que explica que configurar', async () => 
     const html = await res.text();
     assert.match(html, /Falta configurar BOTXTAR/);
     assert.match(html, /SESSION_SECRET/);
-    assert.match(html, /POSTGRES_URL/);
   } finally {
     await new Promise((r) => server.close(r));
   }

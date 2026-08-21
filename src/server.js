@@ -34,11 +34,22 @@ app.use((req, res, next) => {
     }
     return;
   }
-  init().then(() => next(), next);
+  init().then(() => next(), (err) => {
+    // Sin esto, no poder abrir la base salia como un 500 sin explicacion.
+    err.status = 503;
+    err.message = `No se pudo abrir la base de datos: ${err.message}. `
+      + 'Revisa POSTGRES_URL (o DB_FILE si usas un archivo).';
+    next(err);
+  });
 });
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, env: config.env, storage: config.usesPostgres ? 'postgres' : 'sqlite' });
+  res.json({
+    ok: true,
+    env: config.env,
+    storage: config.usesPostgres ? 'postgres' : 'sqlite',
+    ephemeral: config.ephemeralStorage,
+  });
 });
 
 app.use('/api', apiRouter);

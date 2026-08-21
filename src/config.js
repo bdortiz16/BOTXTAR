@@ -32,10 +32,24 @@ function parseUsers() {
   return users;
 }
 
+// Vercel, Netlify y AWS Lambda marcan el entorno con estas variables.
+const SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+  || process.env.NETLIFY);
+
+/**
+ * En serverless el unico directorio donde se puede escribir es /tmp. El resto
+ * del sistema de archivos es de solo lectura, y abrir ahi el SQLite reventaba
+ * la peticion con un error 500 sin explicacion.
+ */
+const DEFAULT_DB_FILE = SERVERLESS
+  ? '/tmp/botxtar.db'
+  : path.join(__dirname, '..', 'data', 'botxtar.db');
+
 const config = {
   port: Number(process.env.PORT || 3000),
   env: process.env.NODE_ENV || 'development',
-  dbFile: process.env.DB_FILE || path.join(__dirname, '..', 'data', 'botxtar.db'),
+  serverless: SERVERLESS,
+  dbFile: process.env.DB_FILE || DEFAULT_DB_FILE,
 
   // Con Postgres configurado la app lo usa y deja de tocar el disco. Es lo
   // que hace falta en Vercel, donde el sistema de archivos es efimero.
@@ -96,16 +110,16 @@ function productionProblems() {
     problems.push('Falta SIGNUP_CODE (el codigo para crear cuentas) o APP_USERS. '
       + 'Sin ninguno de los dos, cualquiera que encuentre la direccion podria entrar.');
   }
-  if (!config.databaseUrl && config.serverless) {
-    problems.push('Falta POSTGRES_URL. En un entorno serverless el disco se borra: ' +
-      'las operaciones se perderian en cada despliegue.');
-  }
   return problems;
 }
 
-// Vercel, Netlify y AWS Lambda marcan el entorno con estas variables.
-config.serverless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
-  || process.env.NETLIFY);
+/**
+ * Sin Postgres en serverless la app funciona, pero guarda en /tmp: los datos
+ * duran lo que dure la instancia. No se bloquea el arranque (sirve para
+ * probar la interfaz), pero se avisa en pantalla para que nadie confunda esto
+ * con contabilidad guardada.
+ */
+config.ephemeralStorage = !config.databaseUrl && SERVERLESS;
 config.productionProblems = productionProblems;
 config.authEnabled = config.users.size > 0;
 

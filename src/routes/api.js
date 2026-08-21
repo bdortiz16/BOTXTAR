@@ -92,6 +92,7 @@ router.get('/catalog', wrap(async (req, res) => {
     currencies: currencies.list(),
     today: ops.today(),
     telegram_enabled: config.telegramEnabled,
+    storage_ephemeral: config.ephemeralStorage,
     user: req.user,
   });
 }));

@@ -241,10 +241,12 @@ function renderHome() {
   $('#btn-settings').classList.remove('hidden');
 
   const noTelegram = !state.catalog.telegram_enabled;
+  const temporal = state.catalog.storage_ephemeral;
   const countries = state.catalog.countries.filter((c) => Number(c.is_origin) === 1);
 
   view.innerHTML = '';
   view.append(h(`
+    ${temporal ? '<div class="alert bad"><b>Modo de prueba.</b> No hay base de datos conectada, asi que las operaciones se guardan temporalmente y <b>se borran solas</b>. Sirve para revisar la app; todavia no para llevar la contabilidad. Conecta una base (POSTGRES_URL) cuando puedas.</div>' : ''}
     ${noTelegram ? '<div class="alert">Telegram no esta configurado: las operaciones se guardan pero no se envian. Configura TELEGRAM_BOT_TOKEN.</div>' : ''}
     <div class="panel">
       <h2>Fecha de la operacion</h2>
