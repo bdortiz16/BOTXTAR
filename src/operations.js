@@ -21,8 +21,8 @@ function str(v, max = 200) {
   return String(v ?? '').trim().slice(0, max);
 }
 
-function getCountry(id) {
-  const row = db.prepare('SELECT * FROM countries WHERE id = ?').get(str(id, 60));
+async function getCountry(id) {
+  const row = await db.get('SELECT * FROM countries WHERE id = ?', [str(id, 60)]);
   if (!row) throw new ValidationError(`Pais desconocido: ${id}`);
   return row;
 }
@@ -42,13 +42,20 @@ function computeDestAmount({ originAmount, rate, rateMode, destCurrency }) {
   return money.roundScaled(raw, decimals);
 }
 
+/** Cuantos decimales significativos tiene una tasa (para no mostrar 1.000,00000000). */
+function rateTrailingDecimals(rate) {
+  const s = money.toDecimalString(rate, 8);
+  const frac = (s.split('.')[1] || '').replace(/0+$/, '');
+  return Math.min(Math.max(frac.length, 0), 8);
+}
+
 /**
  * Vista previa del calculo, sin guardar nada. La usa el formulario para
  * mostrar el total en vivo mientras se escribe el monto y la tasa.
  */
-function preview(input) {
-  const originCountry = getCountry(input.origin_country_id);
-  const destCountry = getCountry(input.dest_country_id || 'colombia');
+async function preview(input) {
+  const originCountry = await getCountry(input.origin_country_id);
+  const destCountry = await getCountry(input.dest_country_id || 'colombia');
   const originCurrency = str(input.origin_currency, 10).toUpperCase() || originCountry.currency;
   const destCurrency = str(input.dest_currency, 10).toUpperCase() || destCountry.currency;
 
@@ -79,13 +86,6 @@ function preview(input) {
   };
 }
 
-/** Cuantos decimales significativos tiene una tasa (para no mostrar 1.000,00000000). */
-function rateTrailingDecimals(rate) {
-  const s = money.toDecimalString(rate, 8);
-  const frac = (s.split('.')[1] || '').replace(/0+$/, '');
-  return Math.min(Math.max(frac.length, 0), 8);
-}
-
 /**
  * Valida el reparto (fraccionamiento) contra el total calculado.
  *
@@ -108,12 +108,11 @@ function validateSplit(destinations, destAmountScaled, destCurrency) {
   const total = money.sum(amounts);
   const diff = destAmountScaled - total;
   if (!money.isZero(diff)) {
-    const faltante = money.formatAmount(diff, decimals);
     const suma = money.formatAmount(total, decimals);
     const esperado = money.formatAmount(destAmountScaled, decimals);
     throw new ValidationError(
       diff > 0n
-        ? `Falta repartir ${faltante} ${destCurrency}. Repartido: ${suma} de ${esperado}.`
+        ? `Falta repartir ${money.formatAmount(diff, decimals)} ${destCurrency}. Repartido: ${suma} de ${esperado}.`
         : `Te pasaste por ${money.formatAmount(-diff, decimals)} ${destCurrency}. Repartido: ${suma} de ${esperado}.`
     );
   }
@@ -179,16 +178,13 @@ function normalizeUsdt(s, i) {
   };
 }
 
-function nextFolio(opDate) {
+/** Consecutivo del dia: 20260821-001. Salta los folios ya usados. */
+async function nextFolio(opDate, conn = db) {
   const compact = opDate.replace(/-/g, '');
-  const row = db.prepare(
-    "SELECT COUNT(*) AS c FROM operations WHERE op_date = ?"
-  ).get(opDate);
+  const row = await conn.get('SELECT COUNT(*) AS c FROM operations WHERE op_date = ?', [opDate]);
   let n = Number(row.c) + 1;
-  // Colision posible si se borro una operacion: busca el primer folio libre.
-  const exists = db.prepare('SELECT 1 FROM operations WHERE folio = ?');
   let folio = `${compact}-${String(n).padStart(3, '0')}`;
-  while (exists.get(folio)) {
+  while (await conn.get('SELECT 1 FROM operations WHERE folio = ?', [folio])) {
     n += 1;
     folio = `${compact}-${String(n).padStart(3, '0')}`;
   }
@@ -196,8 +192,8 @@ function nextFolio(opDate) {
 }
 
 /** Construye la operacion completa y validada a partir del payload del form. */
-function buildOperation(input, actor) {
-  const calc = preview(input);
+async function buildOperation(input, actor) {
+  const calc = await preview(input);
   const destDecimals = calc.dest_decimals;
   const destAmountScaled = money.parseAmount(calc.dest_amount);
 
@@ -245,155 +241,161 @@ function buildOperation(input, actor) {
   };
 }
 
-function insertOperation(op) {
-  const now = new Date().toISOString();
-  const folio = nextFolio(op.op_date);
-
-  const info = db.prepare(`
-    INSERT INTO operations (
-      folio, op_date, origin_country_id, origin_currency, origin_amount,
-      rate, rate_mode, dest_country_id, dest_currency, dest_amount,
-      delivery_type, client_name, client_contact, notes, status,
-      created_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?)
-  `).run(
-    folio, op.op_date, op.origin_country_id, op.origin_currency, op.origin_amount,
-    op.rate, op.rate_mode, op.dest_country_id, op.dest_currency, op.dest_amount,
-    op.delivery_type, op.client_name, op.client_contact, op.notes,
-    op.created_by, now, now
-  );
-  const id = Number(info.lastInsertRowid);
-
-  const insT = db.prepare(`
-    INSERT INTO transfers (operation_id, position, beneficiary_name, doc_type, doc_number,
-      bank_name, account_number, account_type, amount, currency, reference, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+async function insertChildren(conn, id, op) {
   for (const t of op.transfers) {
-    insT.run(id, t.position, t.beneficiary_name, t.doc_type, t.doc_number, t.bank_name,
-      t.account_number, t.account_type, t.amount, t.currency, t.reference, t.status);
+    await conn.run(
+      `INSERT INTO transfers (operation_id, position, beneficiary_name, doc_type, doc_number,
+        bank_name, account_number, account_type, amount, currency, reference, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, t.position, t.beneficiary_name, t.doc_type, t.doc_number, t.bank_name,
+       t.account_number, t.account_type, t.amount, t.currency, t.reference, t.status]
+    );
   }
-
-  const insC = db.prepare(`
-    INSERT INTO cash_deliveries (operation_id, position, city, address, contact_name,
-      contact_phone, doc_type, doc_number, scheduled_at, amount, currency, reference, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (const c of op.cash_deliveries) {
-    insC.run(id, c.position, c.city, c.address, c.contact_name, c.contact_phone,
-      c.doc_type, c.doc_number, c.scheduled_at, c.amount, c.currency, c.reference, c.status);
+    await conn.run(
+      `INSERT INTO cash_deliveries (operation_id, position, city, address, contact_name,
+        contact_phone, doc_type, doc_number, scheduled_at, amount, currency, reference, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, c.position, c.city, c.address, c.contact_name, c.contact_phone, c.doc_type,
+       c.doc_number, c.scheduled_at, c.amount, c.currency, c.reference, c.status]
+    );
   }
-
-  const insU = db.prepare(`
-    INSERT INTO usdt_sales (operation_id, position, quantity, unit_price, currency,
-      gross_amount, network, wallet, counterparty, reference)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (const u of op.usdt_sales) {
-    insU.run(id, u.position, u.quantity, u.unit_price, u.currency, u.gross_amount,
-      u.network, u.wallet, u.counterparty, u.reference);
-  }
-
-  audit(op.created_by, 'CREATE', id, `folio=${folio}`);
-  return id;
-}
-
-function replaceChildren(id, op) {
-  db.prepare('DELETE FROM transfers WHERE operation_id = ?').run(id);
-  db.prepare('DELETE FROM cash_deliveries WHERE operation_id = ?').run(id);
-  db.prepare('DELETE FROM usdt_sales WHERE operation_id = ?').run(id);
-
-  const insT = db.prepare(`
-    INSERT INTO transfers (operation_id, position, beneficiary_name, doc_type, doc_number,
-      bank_name, account_number, account_type, amount, currency, reference, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  for (const t of op.transfers) {
-    insT.run(id, t.position, t.beneficiary_name, t.doc_type, t.doc_number, t.bank_name,
-      t.account_number, t.account_type, t.amount, t.currency, t.reference, t.status);
-  }
-  const insC = db.prepare(`
-    INSERT INTO cash_deliveries (operation_id, position, city, address, contact_name,
-      contact_phone, doc_type, doc_number, scheduled_at, amount, currency, reference, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  for (const c of op.cash_deliveries) {
-    insC.run(id, c.position, c.city, c.address, c.contact_name, c.contact_phone,
-      c.doc_type, c.doc_number, c.scheduled_at, c.amount, c.currency, c.reference, c.status);
-  }
-  const insU = db.prepare(`
-    INSERT INTO usdt_sales (operation_id, position, quantity, unit_price, currency,
-      gross_amount, network, wallet, counterparty, reference)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  for (const u of op.usdt_sales) {
-    insU.run(id, u.position, u.quantity, u.unit_price, u.currency, u.gross_amount,
-      u.network, u.wallet, u.counterparty, u.reference);
+    await conn.run(
+      `INSERT INTO usdt_sales (operation_id, position, quantity, unit_price, currency,
+        gross_amount, network, wallet, counterparty, reference)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, u.position, u.quantity, u.unit_price, u.currency, u.gross_amount,
+       u.network, u.wallet, u.counterparty, u.reference]
+    );
   }
 }
 
-function updateOperation(id, op) {
-  const current = getOperation(id);
+/**
+ * Guarda la operacion y sus destinos en una sola transaccion: si algo falla a
+ * mitad, no queda una operacion con la mitad de las cuentas.
+ */
+async function insertOperation(op) {
+  return db.tx(async (conn) => {
+    const now = new Date().toISOString();
+    const folio = await nextFolio(op.op_date, conn);
+
+    const row = await conn.get(
+      `INSERT INTO operations (
+         folio, op_date, origin_country_id, origin_currency, origin_amount,
+         rate, rate_mode, dest_country_id, dest_currency, dest_amount,
+         delivery_type, client_name, client_contact, notes, status,
+         created_by, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?)
+       RETURNING id`,
+      [folio, op.op_date, op.origin_country_id, op.origin_currency, op.origin_amount,
+       op.rate, op.rate_mode, op.dest_country_id, op.dest_currency, op.dest_amount,
+       op.delivery_type, op.client_name, op.client_contact, op.notes,
+       op.created_by, now, now]
+    );
+    const id = Number(row.id);
+
+    await insertChildren(conn, id, op);
+    await audit(op.created_by, 'CREATE', id, `folio=${folio}`, conn);
+    return id;
+  });
+}
+
+async function updateOperation(id, op) {
+  const current = await getOperation(id);
   if (!current) throw new ValidationError('Operacion no encontrada');
   if (current.status === 'CANCELLED') {
     throw new ValidationError('No se puede editar una operacion anulada');
   }
-  const now = new Date().toISOString();
-  db.prepare(`
-    UPDATE operations SET op_date=?, origin_country_id=?, origin_currency=?, origin_amount=?,
-      rate=?, rate_mode=?, dest_country_id=?, dest_currency=?, dest_amount=?, delivery_type=?,
-      client_name=?, client_contact=?, notes=?, updated_at=?
-    WHERE id=?`).run(
-    op.op_date, op.origin_country_id, op.origin_currency, op.origin_amount,
-    op.rate, op.rate_mode, op.dest_country_id, op.dest_currency, op.dest_amount,
-    op.delivery_type, op.client_name, op.client_contact, op.notes, now, id
-  );
-  replaceChildren(id, op);
-  audit(op.created_by, 'UPDATE', id, '');
-  return id;
+
+  return db.tx(async (conn) => {
+    await conn.run(
+      `UPDATE operations SET op_date=?, origin_country_id=?, origin_currency=?, origin_amount=?,
+         rate=?, rate_mode=?, dest_country_id=?, dest_currency=?, dest_amount=?, delivery_type=?,
+         client_name=?, client_contact=?, notes=?, updated_at=?
+       WHERE id=?`,
+      [op.op_date, op.origin_country_id, op.origin_currency, op.origin_amount,
+       op.rate, op.rate_mode, op.dest_country_id, op.dest_currency, op.dest_amount,
+       op.delivery_type, op.client_name, op.client_contact, op.notes,
+       new Date().toISOString(), id]
+    );
+    for (const table of ['transfers', 'cash_deliveries', 'usdt_sales']) {
+      await conn.run(`DELETE FROM ${table} WHERE operation_id = ?`, [id]);
+    }
+    await insertChildren(conn, id, op);
+    await audit(op.created_by, 'UPDATE', id, '', conn);
+    return id;
+  });
 }
 
-function getOperation(id) {
-  const op = db.prepare('SELECT * FROM operations WHERE id = ?').get(Number(id));
+/** Carga los hijos de varias operaciones de una vez, sin una consulta por fila. */
+async function attachChildren(rows) {
+  if (rows.length === 0) return rows;
+  const ids = rows.map((r) => r.id);
+  const marks = ids.map(() => '?').join(',');
+  const byId = new Map(rows.map((r) => [Number(r.id), r]));
+  for (const r of rows) {
+    r.transfers = [];
+    r.cash_deliveries = [];
+    r.usdt_sales = [];
+  }
+  for (const table of ['transfers', 'cash_deliveries', 'usdt_sales']) {
+    const children = await db.all(
+      `SELECT * FROM ${table} WHERE operation_id IN (${marks}) ORDER BY operation_id, position`,
+      ids
+    );
+    for (const child of children) byId.get(Number(child.operation_id))?.[table].push(child);
+  }
+  return rows;
+}
+
+async function getOperation(id) {
+  const op = await db.get('SELECT * FROM operations WHERE id = ?', [Number(id)]);
   if (!op) return null;
-  op.transfers = db.prepare('SELECT * FROM transfers WHERE operation_id=? ORDER BY position').all(op.id);
-  op.cash_deliveries = db.prepare('SELECT * FROM cash_deliveries WHERE operation_id=? ORDER BY position').all(op.id);
-  op.usdt_sales = db.prepare('SELECT * FROM usdt_sales WHERE operation_id=? ORDER BY position').all(op.id);
-  op.origin_country = db.prepare('SELECT * FROM countries WHERE id=?').get(op.origin_country_id) || null;
-  op.dest_country = db.prepare('SELECT * FROM countries WHERE id=?').get(op.dest_country_id) || null;
+  await attachChildren([op]);
+  op.origin_country = await db.get('SELECT * FROM countries WHERE id=?', [op.origin_country_id]) || null;
+  op.dest_country = await db.get('SELECT * FROM countries WHERE id=?', [op.dest_country_id]) || null;
   return op;
 }
 
-function listOperations({ from, to, country, status, limit = 200, offset = 0 } = {}) {
+async function listOperations({ from, to, country, status, limit = 200, offset = 0 } = {}) {
   const where = [];
   const params = [];
   if (from) { where.push('op_date >= ?'); params.push(from); }
   if (to) { where.push('op_date <= ?'); params.push(to); }
   if (country) { where.push('origin_country_id = ?'); params.push(country); }
   if (status) { where.push('status = ?'); params.push(status); }
-  const sql = `SELECT * FROM operations ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-               ORDER BY op_date DESC, id DESC LIMIT ? OFFSET ?`;
   params.push(Number(limit), Number(offset));
-  const rows = db.prepare(sql).all(...params);
-  for (const r of rows) {
-    r.transfers = db.prepare('SELECT * FROM transfers WHERE operation_id=? ORDER BY position').all(r.id);
-    r.cash_deliveries = db.prepare('SELECT * FROM cash_deliveries WHERE operation_id=? ORDER BY position').all(r.id);
-    r.usdt_sales = db.prepare('SELECT * FROM usdt_sales WHERE operation_id=? ORDER BY position').all(r.id);
-  }
-  return rows;
+
+  const rows = await db.all(
+    `SELECT * FROM operations ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+     ORDER BY op_date DESC, id DESC LIMIT ? OFFSET ?`,
+    params
+  );
+  return attachChildren(rows);
 }
 
-function setStatus(id, status, actor) {
+async function setStatus(id, status, actor) {
   if (!STATUSES.includes(status)) throw new ValidationError(`Estado invalido: ${status}`);
-  db.prepare('UPDATE operations SET status=?, updated_at=? WHERE id=?')
-    .run(status, new Date().toISOString(), Number(id));
-  audit(actor, `STATUS:${status}`, Number(id), '');
+  await db.run('UPDATE operations SET status=?, updated_at=? WHERE id=?',
+    [status, new Date().toISOString(), Number(id)]);
+  await audit(actor, `STATUS:${status}`, Number(id), '');
 }
 
-function markSent(id, { chatId, messageId }) {
-  db.prepare(`UPDATE operations SET status='SENT', sent_at=?, telegram_chat_id=?,
-              telegram_message_id=?, updated_at=? WHERE id=?`)
-    .run(new Date().toISOString(), String(chatId || ''), String(messageId || ''),
-         new Date().toISOString(), Number(id));
+async function markSent(id, { chatId, messageId }) {
+  const now = new Date().toISOString();
+  await db.run(
+    `UPDATE operations SET status='SENT', sent_at=?, telegram_chat_id=?,
+       telegram_message_id=?, updated_at=? WHERE id=?`,
+    [now, String(chatId || ''), String(messageId || ''), now, Number(id)]
+  );
 }
 
-function audit(actor, action, operationId, detail) {
-  db.prepare('INSERT INTO audit_log (at, actor, action, operation_id, detail) VALUES (?,?,?,?,?)')
-    .run(new Date().toISOString(), String(actor || ''), action, operationId ?? null, String(detail || ''));
+async function audit(actor, action, operationId, detail, conn = db) {
+  await conn.run(
+    'INSERT INTO audit_log (at, actor, action, operation_id, detail) VALUES (?,?,?,?,?)',
+    [new Date().toISOString(), String(actor || ''), action, operationId ?? null, String(detail || '')]
+  );
 }
 
 module.exports = {

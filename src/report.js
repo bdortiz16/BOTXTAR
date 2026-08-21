@@ -27,8 +27,8 @@ function dump(map) {
  * Devuelve totales por moneda (recibido y pagado), desglose por pais, por tipo
  * de entrega y el resumen de USDT vendidos. Las operaciones anuladas no suman.
  */
-function build({ from, to, country, status } = {}) {
-  const list = ops.listOperations({ from, to, country, status, limit: 100000 });
+async function build({ from, to, country, status } = {}) {
+  const list = await ops.listOperations({ from, to, country, status, limit: 100000 });
   const counted = list.filter((o) => o.status !== 'CANCELLED');
 
   const received = new Map();   // lo que entrego el cliente (moneda origen)
@@ -74,7 +74,7 @@ function build({ from, to, country, status } = {}) {
   }
 
   const names = new Map(
-    db.prepare('SELECT id, name, emoji FROM countries').all().map((r) => [r.id, r])
+    (await db.all('SELECT id, name, emoji FROM countries')).map((r) => [r.id, r])
   );
 
   return {

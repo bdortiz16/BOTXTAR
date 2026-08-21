@@ -12,9 +12,12 @@ process.env.DB_FILE = path.join(tmp, 'test.db');
 process.env.ADMIN_PASSWORD = 'test';
 
 const money = require('../src/money');
+const { init } = require('../src/db');
 const ops = require('../src/operations');
 const telegram = require('../src/telegram');
 const report = require('../src/report');
+
+test.before(async () => { await init(); });
 
 /** El caso que se hace todos los dias: 10.000 soles a tasa 1.000. */
 const BASE = {
@@ -27,22 +30,22 @@ const BASE = {
   delivery_type: 'TRANSFER',
 };
 
-test('el sistema calcula el monto a pagar sin que nadie lo escriba', () => {
-  const calc = ops.preview(BASE);
+test('el sistema calcula el monto a pagar sin que nadie lo escriba', async () => {
+  const calc = await ops.preview(BASE);
   assert.strictEqual(calc.dest_amount, '10000000');
   assert.strictEqual(calc.dest_currency, 'COP');
   assert.strictEqual(calc.dest_amount_display, '10.000.000');
   assert.strictEqual(calc.origin_currency, 'PEN');
 });
 
-test('la tasa tambien puede ser division', () => {
-  const calc = ops.preview({ ...BASE, origin_amount: '1000', rate: '4', rate_mode: 'DIVIDE' });
+test('la tasa tambien puede ser division', async () => {
+  const calc = await ops.preview({ ...BASE, origin_amount: '1000', rate: '4', rate_mode: 'DIVIDE' });
   assert.strictEqual(calc.dest_amount, '250');
 });
 
-test('rechaza monto o tasa en cero', () => {
-  assert.throws(() => ops.preview({ ...BASE, origin_amount: '0' }), /MONTO/);
-  assert.throws(() => ops.preview({ ...BASE, rate: '0' }), /TASA/);
+test('rechaza monto o tasa en cero', async () => {
+  await assert.rejects(() => ops.preview({ ...BASE, origin_amount: '0' }), /MONTO/);
+  await assert.rejects(() => ops.preview({ ...BASE, rate: '0' }), /TASA/);
 });
 
 test('el fraccionamiento debe cuadrar exacto con el total', () => {
@@ -65,8 +68,8 @@ test('el fraccionamiento debe cuadrar exacto con el total', () => {
   ));
 });
 
-test('guarda una operacion fraccionada en 3 cuentas y la recupera entera', () => {
-  const built = ops.buildOperation({
+test('guarda una operacion fraccionada en 3 cuentas y la recupera entera', async () => {
+  const built = await ops.buildOperation({
     ...BASE,
     client_name: 'Cliente demo',
     destinations: [
@@ -80,8 +83,8 @@ test('guarda una operacion fraccionada en 3 cuentas y la recupera entera', () =>
     usdt_sales: [{ quantity: '2500', unit_price: '4000', currency: 'COP', network: 'TRON' }],
   }, 'bryan');
 
-  const id = ops.insertOperation(built);
-  const op = ops.getOperation(id);
+  const id = await ops.insertOperation(built);
+  const op = await ops.getOperation(id);
 
   assert.strictEqual(op.transfers.length, 3);
   assert.strictEqual(op.dest_amount, '10000000');
@@ -94,29 +97,29 @@ test('guarda una operacion fraccionada en 3 cuentas y la recupera entera', () =>
   assert.strictEqual(money.toDecimalString(suma, 0), '10000000');
 });
 
-test('una operacion sin nombre de beneficiario no pasa', () => {
-  assert.throws(() => ops.buildOperation({
+test('una operacion sin nombre de beneficiario no pasa', async () => {
+  await assert.rejects(() => ops.buildOperation({
     ...BASE,
     destinations: [{ beneficiary_name: '', amount: '10000000' }],
   }, 'bryan'), /NOMBRE/);
 });
 
-test('la entrega en efectivo exige ciudad', () => {
-  assert.throws(() => ops.buildOperation({
+test('la entrega en efectivo exige ciudad', async () => {
+  await assert.rejects(() => ops.buildOperation({
     ...BASE, delivery_type: 'CASH',
     destinations: [{ city: '', amount: '10000000' }],
   }, 'bryan'), /CIUDAD/);
 
-  assert.doesNotThrow(() => ops.buildOperation({
+  await assert.doesNotReject(() => ops.buildOperation({
     ...BASE, delivery_type: 'CASH',
     destinations: [{ city: 'Bogota', address: 'Cra 7', amount: '10000000' }],
   }, 'bryan'));
 });
 
-test('el mensaje de Telegram trae las 3 cuentas y la venta de USDT', () => {
-  const op = ops.listOperations({ limit: 1 })[0];
-  const full = ops.getOperation(op.id);
-  const text = telegram.renderMessage(full);
+test('el mensaje de Telegram trae las 3 cuentas y la venta de USDT', async () => {
+  const op = (await ops.listOperations({ limit: 1 }))[0];
+  const full = await ops.getOperation(op.id);
+  const text = await telegram.renderForOperation(full);
 
   assert.match(text, /10\.000,00 PEN/);
   assert.match(text, /10\.000\.000 COP/);
@@ -127,8 +130,8 @@ test('el mensaje de Telegram trae las 3 cuentas y la venta de USDT', () => {
   assert.match(text, /2\.500,00 USDT/);
 });
 
-test('el informe suma por moneda y no mezcla soles con pesos', () => {
-  const rep = report.build({ from: '2026-08-21', to: '2026-08-21' });
+test('el informe suma por moneda y no mezcla soles con pesos', async () => {
+  const rep = await report.build({ from: '2026-08-21', to: '2026-08-21' });
   const recibido = Object.fromEntries(rep.totals.received.map((r) => [r.currency, r.amount]));
   const pagado = Object.fromEntries(rep.totals.paid.map((r) => [r.currency, r.amount]));
   assert.strictEqual(recibido.PEN, '10000.00');
@@ -136,17 +139,17 @@ test('el informe suma por moneda y no mezcla soles con pesos', () => {
   assert.strictEqual(rep.totals.usdt.quantity, '2500.00');
 });
 
-test('las operaciones anuladas salen del informe', () => {
-  const op = ops.listOperations({ limit: 1 })[0];
-  ops.setStatus(op.id, 'CANCELLED', 'bryan');
-  const rep = report.build({ from: '2026-08-21', to: '2026-08-21' });
+test('las operaciones anuladas salen del informe', async () => {
+  const op = (await ops.listOperations({ limit: 1 }))[0];
+  await ops.setStatus(op.id, 'CANCELLED', 'bryan');
+  const rep = await report.build({ from: '2026-08-21', to: '2026-08-21' });
   assert.strictEqual(rep.totals.operations, 0);
   assert.strictEqual(rep.totals.cancelled, 1);
-  ops.setStatus(op.id, 'DRAFT', 'bryan');
+  await ops.setStatus(op.id, 'DRAFT', 'bryan');
 });
 
-test('el CSV trae una fila por cuenta destino', () => {
-  const rep = report.build({ from: '2026-08-21', to: '2026-08-21' });
+test('el CSV trae una fila por cuenta destino', async () => {
+  const rep = await report.build({ from: '2026-08-21', to: '2026-08-21' });
   const csv = report.toCsv(rep);
   const lines = csv.trim().split('\n');
   assert.strictEqual(lines.length, 4); // cabecera + 3 cuentas

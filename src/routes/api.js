@@ -47,11 +47,11 @@ router.use(auth.requireAuth);
 
 /* ------------------------------ catalogo -------------------------------- */
 
-router.get('/catalog', (req, res) => {
-  const countries = db.prepare(
+router.get('/catalog', wrap(async (req, res) => {
+  const countries = await db.all(
     'SELECT * FROM countries WHERE active = 1 ORDER BY sort_order, name'
-  ).all();
-  const banks = db.prepare('SELECT * FROM banks WHERE active = 1 ORDER BY name').all();
+  );
+  const banks = await db.all('SELECT * FROM banks WHERE active = 1 ORDER BY name');
   const banksByCountry = {};
   for (const b of banks) {
     (banksByCountry[b.country_id] ||= []).push(b.name);
@@ -64,10 +64,10 @@ router.get('/catalog', (req, res) => {
     telegram_enabled: config.telegramEnabled,
     user: req.user,
   });
-});
+}));
 
 /** Alta de pais: cubre el "otros paises" que hoy no existe en los grupos. */
-router.post('/countries', (req, res) => {
+router.post('/countries', wrap(async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) throw new ValidationError('El pais necesita un nombre');
   const id = slugify(req.body?.id || name);
@@ -76,28 +76,29 @@ router.post('/countries', (req, res) => {
   if (!/^[A-Z]{3,5}$/.test(currency)) {
     throw new ValidationError('Codigo de moneda invalido (ej: COP, PEN, USD)');
   }
-  if (db.prepare('SELECT 1 FROM countries WHERE id = ?').get(id)) {
+  if (await db.get('SELECT 1 FROM countries WHERE id = ?', [id])) {
     throw new ValidationError(`Ya existe un pais con el identificador "${id}"`);
   }
-  const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM countries').get().m;
-  db.prepare(`INSERT INTO countries (id, name, emoji, currency, telegram_chat_id,
-              telegram_thread_id, color, sort_order, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    id, name,
-    String(req.body?.emoji || '🌎').slice(0, 8),
-    currency,
-    String(req.body?.telegram_chat_id || '').trim(),
-    String(req.body?.telegram_thread_id || '').trim(),
-    String(req.body?.color || '#3f51b5').slice(0, 12),
-    Number(maxOrder) + 10,
-    new Date().toISOString()
+  const { m: maxOrder } = await db.get('SELECT COALESCE(MAX(sort_order), 0) AS m FROM countries');
+  await db.run(
+    `INSERT INTO countries (id, name, emoji, currency, telegram_chat_id,
+       telegram_thread_id, color, sort_order, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, name,
+     String(req.body?.emoji || '🌎').slice(0, 8),
+     currency,
+     String(req.body?.telegram_chat_id || '').trim(),
+     String(req.body?.telegram_thread_id || '').trim(),
+     String(req.body?.color || '#3f51b5').slice(0, 12),
+     Number(maxOrder) + 10,
+     new Date().toISOString()]
   );
-  ops.audit(req.user, 'COUNTRY_CREATE', null, id);
-  res.status(201).json(db.prepare('SELECT * FROM countries WHERE id = ?').get(id));
-});
+  await ops.audit(req.user, 'COUNTRY_CREATE', null, id);
+  res.status(201).json(await db.get('SELECT * FROM countries WHERE id = ?', [id]));
+}));
 
-router.patch('/countries/:id', (req, res) => {
-  const current = db.prepare('SELECT * FROM countries WHERE id = ?').get(req.params.id);
+router.patch('/countries/:id', wrap(async (req, res) => {
+  const current = await db.get('SELECT * FROM countries WHERE id = ?', [req.params.id]);
   if (!current) throw new ValidationError('Pais no encontrado');
   const fields = ['name', 'emoji', 'currency', 'telegram_chat_id', 'telegram_thread_id',
                   'color', 'active', 'sort_order', 'is_origin', 'is_destination'];
@@ -114,84 +115,84 @@ router.patch('/countries/:id', (req, res) => {
   }
   if (!sets.length) return res.json(current);
   params.push(req.params.id);
-  db.prepare(`UPDATE countries SET ${sets.join(', ')} WHERE id = ?`).run(...params);
-  ops.audit(req.user, 'COUNTRY_UPDATE', null, req.params.id);
-  res.json(db.prepare('SELECT * FROM countries WHERE id = ?').get(req.params.id));
-});
+  await db.run(`UPDATE countries SET ${sets.join(', ')} WHERE id = ?`, params);
+  await ops.audit(req.user, 'COUNTRY_UPDATE', null, req.params.id);
+  res.json(await db.get('SELECT * FROM countries WHERE id = ?', [req.params.id]));
+}));
 
-router.post('/countries/:id/banks', (req, res) => {
+router.post('/countries/:id/banks', wrap(async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (!name) throw new ValidationError('El banco necesita un nombre');
-  if (!db.prepare('SELECT 1 FROM countries WHERE id = ?').get(req.params.id)) {
+  if (!await db.get('SELECT 1 FROM countries WHERE id = ?', [req.params.id])) {
     throw new ValidationError('Pais no encontrado');
   }
-  db.prepare('INSERT INTO banks (country_id, name) VALUES (?, ?) ON CONFLICT DO NOTHING')
-    .run(req.params.id, name);
+  await db.run('INSERT INTO banks (country_id, name) VALUES (?, ?) ON CONFLICT DO NOTHING',
+    [req.params.id, name]);
   res.status(201).json({ country_id: req.params.id, name });
-});
+}));
 
 /* ----------------------------- operaciones ------------------------------ */
 
 /** Calculo en vivo: el formulario lo llama mientras se escribe monto y tasa. */
-router.post('/operations/preview', (req, res) => {
-  res.json(ops.preview(req.body || {}));
-});
+router.post('/operations/preview', wrap(async (req, res) => {
+  res.json(await ops.preview(req.body || {}));
+}));
 
 /**
  * Vista previa del mensaje de Telegram para una operacion que todavia no se
  * guarda, para poder revisarla antes de crear nada.
  */
-router.post('/operations/preview-message', (req, res) => {
-  const built = ops.buildOperation(req.body || {}, req.user);
+router.post('/operations/preview-message', wrap(async (req, res) => {
+  const built = await ops.buildOperation(req.body || {}, req.user);
   const draft = {
     ...built,
     folio: `${built.op_date.replace(/-/g, '')}-nueva`,
-    origin_country: ops.getCountry(built.origin_country_id),
-    dest_country: ops.getCountry(built.dest_country_id),
+    origin_country: await ops.getCountry(built.origin_country_id),
+    dest_country: await ops.getCountry(built.dest_country_id),
   };
   const { chatId } = telegram.resolveChat(draft.origin_country);
-  res.json({ text: telegram.renderMessage(draft), chat_id: chatId });
-});
+  res.json({ text: await telegram.renderForOperation(draft), chat_id: chatId });
+}));
 
-router.get('/operations', (req, res) => {
+router.get('/operations', wrap(async (req, res) => {
   res.json({
-    operations: ops.listOperations({
+    operations: await ops.listOperations({
       from: req.query.from, to: req.query.to, country: req.query.country,
       status: req.query.status, limit: Number(req.query.limit || 200),
       offset: Number(req.query.offset || 0),
     }),
   });
-});
+}));
 
-router.get('/operations/:id', (req, res) => {
-  const op = ops.getOperation(req.params.id);
+router.get('/operations/:id', wrap(async (req, res) => {
+  const op = await ops.getOperation(req.params.id);
   if (!op) return res.status(404).json({ error: 'Operacion no encontrada' });
   res.json(op);
-});
+}));
 
-router.post('/operations', (req, res) => {
-  const built = ops.buildOperation(req.body || {}, req.user);
-  const id = ops.insertOperation(built);
-  res.status(201).json(ops.getOperation(id));
-});
+router.post('/operations', wrap(async (req, res) => {
+  const built = await ops.buildOperation(req.body || {}, req.user);
+  const id = await ops.insertOperation(built);
+  res.status(201).json(await ops.getOperation(id));
+}));
 
-router.put('/operations/:id', (req, res) => {
-  const built = ops.buildOperation(req.body || {}, req.user);
-  ops.updateOperation(Number(req.params.id), built);
-  res.json(ops.getOperation(req.params.id));
-});
+router.put('/operations/:id', wrap(async (req, res) => {
+  const built = await ops.buildOperation(req.body || {}, req.user);
+  await ops.updateOperation(Number(req.params.id), built);
+  res.json(await ops.getOperation(req.params.id));
+}));
 
 /** Vista previa del mensaje tal cual llegara al grupo, antes de enviar. */
-router.get('/operations/:id/preview-message', (req, res) => {
-  const op = ops.getOperation(req.params.id);
+router.get('/operations/:id/preview-message', wrap(async (req, res) => {
+  const op = await ops.getOperation(req.params.id);
   if (!op) return res.status(404).json({ error: 'Operacion no encontrada' });
   const { chatId } = telegram.resolveChat(op.origin_country);
-  res.json({ text: telegram.renderMessage(op), chat_id: chatId });
-});
+  res.json({ text: await telegram.renderForOperation(op), chat_id: chatId });
+}));
 
 /** Boton ENVIAR: manda la notificacion al grupo del pais y marca la operacion. */
 router.post('/operations/:id/send', wrap(async (req, res) => {
-  const op = ops.getOperation(req.params.id);
+  const op = await ops.getOperation(req.params.id);
   if (!op) return res.status(404).json({ error: 'Operacion no encontrada' });
   if (op.status === 'CANCELLED') throw new ValidationError('La operacion esta anulada');
   if (op.status === 'SENT' && !req.body?.resend) {
@@ -203,30 +204,30 @@ router.post('/operations/:id/send', wrap(async (req, res) => {
 
   const result = await telegram.sendOperation(op);
   if (!result.sent) {
-    ops.audit(req.user, 'SEND_FAILED', op.id, result.reason);
+    await ops.audit(req.user, 'SEND_FAILED', op.id, result.reason);
     return res.status(502).json({ error: result.reason, text: result.text, operation: op });
   }
-  ops.markSent(op.id, { chatId: result.chatId, messageId: result.messageId });
-  ops.audit(req.user, 'SENT', op.id, `chat=${result.chatId} msg=${result.messageId}`);
-  res.json({ ok: true, text: result.text, operation: ops.getOperation(op.id) });
+  await ops.markSent(op.id, { chatId: result.chatId, messageId: result.messageId });
+  await ops.audit(req.user, 'SENT', op.id, `chat=${result.chatId} msg=${result.messageId}`);
+  res.json({ ok: true, text: result.text, operation: await ops.getOperation(op.id) });
 }));
 
-router.post('/operations/:id/status', (req, res) => {
-  ops.setStatus(Number(req.params.id), String(req.body?.status || ''), req.user);
-  res.json(ops.getOperation(req.params.id));
-});
+router.post('/operations/:id/status', wrap(async (req, res) => {
+  await ops.setStatus(Number(req.params.id), String(req.body?.status || ''), req.user);
+  res.json(await ops.getOperation(req.params.id));
+}));
 
 /* ------------------------------- informe -------------------------------- */
 
-router.get('/report', (req, res) => {
-  res.json(report.build({
+router.get('/report', wrap(async (req, res) => {
+  res.json(await report.build({
     from: req.query.from, to: req.query.to,
     country: req.query.country, status: req.query.status,
   }));
-});
+}));
 
-router.get('/report.csv', (req, res) => {
-  const data = report.build({
+router.get('/report.csv', wrap(async (req, res) => {
+  const data = await report.build({
     from: req.query.from, to: req.query.to,
     country: req.query.country, status: req.query.status,
   });
@@ -234,27 +235,27 @@ router.get('/report.csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
   res.send('﻿' + report.toCsv(data)); // BOM para que Excel lea los acentos
-});
+}));
 
 /* -------------------------------- ajustes ------------------------------- */
 
-router.get('/settings/template', (req, res) => {
+router.get('/settings/template', wrap(async (req, res) => {
   res.json({
-    template: telegram.getTemplate(),
+    template: await telegram.getTemplate(),
     default: telegram.DEFAULT_TEMPLATE,
     presets: telegram.PRESETS,
   });
-});
+}));
 
-router.put('/settings/template', (req, res) => {
-  const template = telegram.setTemplate(req.body?.template);
-  ops.audit(req.user, 'TEMPLATE_UPDATE', null, '');
+router.put('/settings/template', wrap(async (req, res) => {
+  const template = await telegram.setTemplate(req.body?.template);
+  await ops.audit(req.user, 'TEMPLATE_UPDATE', null, '');
   res.json({ template });
-});
+}));
 
 /** Prueba una plantilla contra una operacion de muestra, sin guardar nada. */
-router.post('/settings/template/preview', (req, res) => {
-  const template = String(req.body?.template ?? '') || telegram.getTemplate();
+router.post('/settings/template/preview', wrap(async (req, res) => {
+  const template = String(req.body?.template ?? '') || await telegram.getTemplate();
   const sample = telegram.sampleOperation();
   if (req.body?.split) {
     sample.origin_country = { id: 'peru', name: 'Peru', emoji: '🇵🇪' };
@@ -284,13 +285,13 @@ router.post('/settings/template/preview', (req, res) => {
   } catch (err) {
     throw new ValidationError(`La plantilla tiene un error: ${err.message}`);
   }
-});
+}));
 
 router.get('/telegram/status', wrap(async (req, res) => {
   const status = await telegram.getMe();
-  const countries = db.prepare(
+  const countries = await db.all(
     'SELECT id, name, emoji, telegram_chat_id FROM countries WHERE active = 1 ORDER BY sort_order'
-  ).all();
+  );
   res.json({
     ...status,
     fallback_chat_id: config.telegram.fallbackChatId,

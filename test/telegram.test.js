@@ -10,7 +10,10 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'botxtar-tg-'));
 process.env.DB_FILE = path.join(tmp, 'tg.db');
 process.env.TIMEZONE = 'America/Bogota';
 
+const { init } = require('../src/db');
 const telegram = require('../src/telegram');
+
+test.before(async () => { await init(); });
 
 const NOW = new Date('2026-08-20T18:40:50Z'); // 13:40:50 en Bogota
 
@@ -95,8 +98,9 @@ test('el texto del cliente se escapa: no rompe el HTML de Telegram', () => {
   assert.match(text, /Ana &lt;b&gt;rara&lt;\/b&gt; &amp; cia/);
 });
 
-test('una plantilla vacia vuelve al formato por defecto', () => {
-  assert.strictEqual(telegram.setTemplate(''), telegram.DEFAULT_TEMPLATE);
-  assert.strictEqual(telegram.setTemplate('   hola {{folio}}'), '   hola {{folio}}');
-  telegram.setTemplate('');
+test('una plantilla vacia vuelve al formato por defecto', async () => {
+  assert.strictEqual(await telegram.setTemplate(''), telegram.DEFAULT_TEMPLATE);
+  assert.strictEqual(await telegram.setTemplate('   hola {{folio}}'), '   hola {{folio}}');
+  assert.strictEqual(await telegram.getTemplate(), '   hola {{folio}}');
+  await telegram.setTemplate('');
 });

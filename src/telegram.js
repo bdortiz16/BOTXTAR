@@ -76,15 +76,18 @@ const DEFAULT_TEMPLATE = PRESETS.mejorado;
 
 const SETTING_KEY = 'telegram_template';
 
-function getTemplate() {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(SETTING_KEY);
+async function getTemplate() {
+  const row = await db.get('SELECT value FROM settings WHERE key = ?', [SETTING_KEY]);
   return row ? row.value : DEFAULT_TEMPLATE;
 }
 
-function setTemplate(value) {
+async function setTemplate(value) {
   const v = String(value ?? '').slice(0, 8000) || DEFAULT_TEMPLATE;
-  db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
-              ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(SETTING_KEY, v);
+  await db.run(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+    [SETTING_KEY, v]
+  );
   return v;
 }
 
@@ -219,7 +222,7 @@ function renderUsdt(op) {
 
 /** Sustituye los marcadores y limpia lineas vacias sobrantes. */
 function renderMessage(op, { template, now } = {}) {
-  const tpl = template || getTemplate();
+  const tpl = template || DEFAULT_TEMPLATE;
   const stamp = now || (op.sent_at ? new Date(op.sent_at) : new Date());
   const fechaHora = formatDateTime(stamp);
   const originCurrency = op.origin_currency;
@@ -262,6 +265,11 @@ function renderMessage(op, { template, now } = {}) {
   return out;
 }
 
+/** Renderiza usando la plantilla guardada en ajustes. */
+async function renderForOperation(op, { now } = {}) {
+  return renderMessage(op, { template: await getTemplate(), now });
+}
+
 /** Grupo al que va la notificacion: el del pais, o el de respaldo. */
 function resolveChat(country) {
   const chatId = (country?.telegram_chat_id || '').trim() || config.telegram.fallbackChatId;
@@ -301,7 +309,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * respeta el retry_after cuando Telegram limita la velocidad.
  */
 async function sendOperation(op, { template } = {}) {
-  const text = renderMessage(op, { template });
+  const text = renderMessage(op, { template: template || await getTemplate() });
   const { chatId, threadId } = resolveChat(op.origin_country);
 
   if (!config.telegramEnabled) {
@@ -386,6 +394,6 @@ function sampleOperation() {
 
 module.exports = {
   PRESETS, DEFAULT_TEMPLATE, getTemplate, setTemplate,
-  renderMessage, renderDestinations, renderDestinationsSimple, renderUsdt,
+  renderMessage, renderForOperation, renderDestinations, renderDestinationsSimple, renderUsdt,
   sendOperation, resolveChat, getMe, esc, formatDateTime, docLabel, sampleOperation,
 };

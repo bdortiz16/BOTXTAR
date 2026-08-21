@@ -37,6 +37,11 @@ const config = {
   env: process.env.NODE_ENV || 'development',
   dbFile: process.env.DB_FILE || path.join(__dirname, '..', 'data', 'botxtar.db'),
 
+  // Con Postgres configurado la app lo usa y deja de tocar el disco. Es lo
+  // que hace falta en Vercel, donde el sistema de archivos es efimero.
+  // POSTGRES_URL lo pone la integracion de Vercel; DATABASE_URL, Neon y otros.
+  databaseUrl: (process.env.POSTGRES_URL || process.env.DATABASE_URL || '').trim(),
+
   // Un unico bot de Telegram; cada pais apunta a su propio grupo (chat_id).
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN || '',
@@ -57,6 +62,37 @@ const config = {
 };
 
 config.telegramEnabled = Boolean(config.telegram.token);
+config.usesPostgres = Boolean(config.databaseUrl);
+
+/**
+ * Revisa la configuracion antes de atender peticiones en produccion.
+ *
+ * Son fallos silenciosos, y por eso peligrosos: sin SESSION_SECRET cada
+ * instancia firma con una clave distinta y las sesiones se caen al azar; sin
+ * Postgres en un entorno serverless la base se borra en cada despliegue.
+ */
+function productionProblems() {
+  if (config.env !== 'production') return [];
+  const problems = [];
+
+  if (!process.env.SESSION_SECRET) {
+    problems.push('Falta SESSION_SECRET. Sin el, las sesiones se cierran solas. ' +
+      'Genera uno con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  }
+  if (!config.authEnabled) {
+    problems.push('Falta APP_USERS (o ADMIN_PASSWORD). La app quedaria abierta a cualquiera.');
+  }
+  if (!config.databaseUrl && config.serverless) {
+    problems.push('Falta POSTGRES_URL. En un entorno serverless el disco se borra: ' +
+      'las operaciones se perderian en cada despliegue.');
+  }
+  return problems;
+}
+
+// Vercel, Netlify y AWS Lambda marcan el entorno con estas variables.
+config.serverless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+  || process.env.NETLIFY);
+config.productionProblems = productionProblems;
 config.authEnabled = config.users.size > 0;
 
 module.exports = config;

@@ -51,10 +51,10 @@ La duda era si poner el total o dejarlo editable. Se hacen las dos cosas:
 
 ---
 
-## Instalacion
+## Instalacion local
 
-Requiere **Node.js 22.5 o superior** (usa el SQLite que trae Node, sin
-compilar nada).
+Requiere **Node.js 22.5 o superior**. En local no hace falta base de datos:
+usa el SQLite que ya trae Node, sin compilar ni levantar nada.
 
 ```bash
 npm install
@@ -65,22 +65,26 @@ npm start                 # http://localhost:3000
 Pruebas:
 
 ```bash
-npm test
+npm test                                        # contra SQLite
+PGTEST_URL=postgres://usuario@host:5432 npm run test:pg   # contra Postgres
 ```
 
 ## Configuracion
 
 | Variable | Para que sirve |
 | --- | --- |
+| `POSTGRES_URL` / `DATABASE_URL` | Base Postgres. **Obligatoria en Vercel.** Si no esta, se usa SQLite en disco. |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de BotFather. Sin el, la app guarda pero no envia. |
 | `TELEGRAM_FALLBACK_CHAT_ID` | Grupo para los paises que aun no tienen el suyo. |
 | `APP_USERS` | Operadores, como `bryan:clave,jose:otraclave`. |
-| `SESSION_SECRET` | Firma de la sesion. Genera uno largo y no lo cambies. |
+| `SESSION_SECRET` | Firma de la sesion. Obligatoria en produccion. |
 | `TIMEZONE` | Zona horaria de la fecha por defecto y los informes. |
-| `DB_FILE` | Ruta del archivo SQLite. Ponlo en disco persistente. |
+| `DB_FILE` | Ruta del archivo SQLite, solo si no se usa Postgres. |
 
-> Si no defines `APP_USERS` ni `ADMIN_PASSWORD`, la app arranca **sin clave**.
-> Sirve para probar en local; nunca la publiques asi.
+> En produccion la app **no atiende peticiones** si falta `SESSION_SECRET`,
+> si no hay usuarios configurados, o si corre en serverless sin Postgres.
+> Devuelve un error explicando que falta, en vez de perder datos o cerrar
+> sesiones sin motivo aparente.
 
 ### Conectar los grupos de Telegram
 
@@ -174,19 +178,28 @@ levantar un servidor de base de datos.
 
 ```
 src/
-  server.js      arranque de Express y manejo de errores
-  config.js      lectura de variables de entorno
-  db.js          esquema SQLite y datos iniciales (paises y bancos)
-  money.js       aritmetica exacta de dinero (BigInt escalado a 8 decimales)
-  currencies.js  decimales reales de cada moneda (COP y CLP sin centavos)
-  operations.js  calculo, validaciones y persistencia de operaciones
-  telegram.js    plantilla del mensaje y envio con reintentos
-  report.js      informe contable y exportacion a CSV
-  routes/api.js  API HTTP
-  auth.js        sesion firmada con HMAC, sin dependencias
-public/          interfaz movil (HTML, CSS y JS sin framework)
-test/            43 pruebas: dinero, operaciones, informe y API completa
+  server.js       arranque de Express y manejo de errores
+  config.js       variables de entorno y revision de produccion
+  db/
+    index.js      elige el motor segun el entorno
+    schema.js     esquema y datos iniciales (paises y bancos)
+    sqlite.js     motor local: el SQLite que trae Node
+    postgres.js   motor de produccion (Vercel Postgres o Neon)
+  money.js        aritmetica exacta de dinero (BigInt escalado a 8 decimales)
+  currencies.js   decimales reales de cada moneda (COP y CLP sin centavos)
+  operations.js   calculo, validaciones y persistencia de operaciones
+  telegram.js     plantillas del mensaje y envio con reintentos
+  report.js       informe contable y exportacion a CSV
+  routes/api.js   API HTTP
+  auth.js         sesion firmada con HMAC, sin dependencias
+api/index.js      punto de entrada para Vercel
+public/           interfaz movil (HTML, CSS y JS sin framework)
+test/             46 pruebas, que corren contra SQLite y contra Postgres
 ```
+
+Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es
+como se declara la clave primaria y la numeracion de los parametros, asi que
+la misma suite de pruebas se ejecuta contra los dos.
 
 ### Por que el dinero no usa numeros normales
 
@@ -203,15 +216,42 @@ deja de hacer falta.
 
 ---
 
-## Despliegue
+## Despliegue en Vercel
 
-Cualquier servicio que corra Node 22 sirve (Railway, Render, Fly, un VPS).
-Lo unico importante:
+El repositorio ya trae `vercel.json` y `api/index.js`, asi que Vercel detecta
+la app sola. Lo unico imprescindible es la base de datos.
 
-- Monta un **volumen persistente** para `DB_FILE`. Si el disco es efimero, se
-  pierden las operaciones en cada despliegue.
-- Pon `NODE_ENV=production` y `SECURE_COOKIES=1` detras de HTTPS.
-- Haz copia periodica del archivo `.db`.
+**1. Crear la base.** En el panel de Vercel: *Storage -> Create Database ->
+Postgres*, y conectarla al proyecto. Vercel inyecta `POSTGRES_URL` solo. Si
+prefieres Neon o Supabase, copia su cadena de conexion en `DATABASE_URL`.
 
-Para seguir usando el dominio actual, apunta `botxar.com` a este servicio o
-enlaza a el desde el boton **ENVIOS** de la pagina de Wix.
+**2. Variables de entorno** (*Settings -> Environment Variables*):
+
+```
+SESSION_SECRET=<32 bytes en hex>
+APP_USERS=bryan:tu-clave
+TELEGRAM_BOT_TOKEN=<token de BotFather>
+TIMEZONE=America/Bogota
+NODE_ENV=production
+```
+
+**3. Limpiar el Build Command.** Si el proyecto se creo con otra plantilla,
+en *Settings -> Build & Development Settings* puede haber quedado
+`vite build`, que falla con `vite: command not found` porque este repo no usa
+Vite. `vercel.json` ya lo sobrescribe; si el panel insiste, desactiva el
+"Override" de Build Command.
+
+**4. Dominio.** Apunta `botxar.com` al proyecto, o enlaza desde el boton
+ENVIOS de la pagina de Wix.
+
+El esquema y los paises iniciales se crean solos en la primera peticion; no
+hay que correr migraciones a mano.
+
+### Otras opciones
+
+Tambien corre en Railway, Render o un VPS. Ahi puedes quedarte con SQLite si
+montas un **volumen persistente** para `DB_FILE`; si el disco es efimero, se
+pierden las operaciones en cada despliegue.
+
+En cualquier caso: `NODE_ENV=production`, `SECURE_COOKIES=1` detras de HTTPS,
+y copia periodica de la base.
