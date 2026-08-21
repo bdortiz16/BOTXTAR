@@ -11,6 +11,10 @@ operacion queda guardada para el informe contable.
 
 ## Que hace
 
+0. **Inicio.** Al entrar se ve como va el dia: operaciones, lo recibido por
+   moneda, lo pagado, lo que se envio al grupo y nadie marco como pagado, y las
+   ultimas operaciones. Desde ahi se abre un envio nuevo, el informe o los
+   ajustes.
 1. **Fecha y pais.** Se elige la fecha y se abre la cuadricula de paises.
    Estan los grupos que ya existen (Peru, Chile, Brasil, Mexico) mas Colombia,
    Venezuela, Ecuador y USDT, y hay un boton **Otro pais** para agregar
@@ -224,7 +228,7 @@ api/index.js      punto de entrada para Vercel
 public/
   index.html      pagina publica de botxtar.com
   app.html        la aplicacion
-test/             80 pruebas, que corren contra SQLite y contra Postgres
+test/             82 pruebas, que corren contra SQLite y contra Postgres
 ```
 
 Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es

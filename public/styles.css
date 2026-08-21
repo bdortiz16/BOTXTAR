@@ -250,6 +250,171 @@ body {
   box-shadow: var(--shadow-2);
 }
 
+/* ----------------------------- inicio ----------------------------------- */
+
+.greeting {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-1) var(--sp-5);
+}
+.avatar {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-weight: 600;
+  font-size: var(--t-callout);
+  letter-spacing: 0.02em;
+}
+.greeting-text { min-width: 0; }
+.greeting-text .hi {
+  display: block;
+  font-size: var(--t-subhead);
+  color: var(--label-2);
+}
+.greeting-text strong {
+  display: block;
+  font-size: var(--t-title);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+/* Aviso plegado: cuenta que hay algo que atender sin quedarse con la
+   pantalla, que es lo que hacian tres bloques apilados. */
+.notice {
+  background: var(--amber-soft);
+  border-radius: var(--r-md);
+  margin-bottom: var(--sp-3);
+  overflow: hidden;
+}
+.notice.bad { background: var(--red-soft); }
+.notice > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--tap);
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+  font-size: var(--t-subhead);
+  font-weight: 500;
+  color: var(--amber);
+  list-style: none;
+}
+.notice.bad > summary { color: var(--red); }
+.notice > summary::-webkit-details-marker { display: none; }
+.notice > summary::after {
+  content: '⌄';
+  margin-left: auto;
+  font-size: 1.1rem;
+  line-height: 1;
+  transform: translateY(-2px);
+}
+.notice[open] > summary::after { content: '⌃'; transform: translateY(3px); }
+.notice .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.notice-body {
+  padding: 0 var(--sp-4) var(--sp-4);
+  font-size: var(--t-footnote);
+  color: var(--amber);
+  line-height: 1.5;
+}
+.notice.bad .notice-body { color: var(--red); }
+.notice-body p { margin: 0 0 var(--sp-2); }
+.notice-body p:last-child { margin-bottom: 0; }
+
+/* Accion principal: una sola, grande y con su explicacion debajo. */
+.big-action {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: left;
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  min-height: 68px;
+  box-shadow: var(--shadow-2);
+}
+.big-action .ico {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, .2);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.big-action .txt strong {
+  display: block;
+  font-size: var(--t-body);
+  font-weight: 600;
+}
+.big-action .txt small {
+  display: block;
+  font-size: var(--t-footnote);
+  opacity: .85;
+  font-weight: 400;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.tile {
+  background: var(--bg-elevated);
+  border: 0;
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-2);
+  min-height: 96px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--label);
+  text-align: center;
+  box-shadow: var(--shadow-1);
+  transition: transform .12s var(--ease);
+}
+.tile:active { transform: scale(.97); }
+.tile .ico { display: block; font-size: 1.5rem; line-height: 1; margin-bottom: var(--sp-2); }
+.tile strong {
+  display: block;
+  font-size: var(--t-footnote);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.tile small {
+  display: block;
+  font-size: var(--t-caption);
+  color: var(--label-2);
+  margin-top: 2px;
+}
+
+.stats.stats-3 { grid-template-columns: repeat(3, 1fr); }
+.stat.attention .v { color: var(--amber); }
+
+/* Cabecera dentro de un resumen: agrupa filas sin fingir ser una de ellas. */
+.sublabel {
+  font-size: var(--t-footnote);
+  font-weight: 600;
+  color: var(--label-2);
+  letter-spacing: -0.01em;
+  margin: var(--sp-4) 0 var(--sp-1);
+}
+.sublabel:first-child { margin-top: 0; }
+
 /* ------------------------------- paises --------------------------------- */
 
 .countries {
@@ -610,7 +775,15 @@ pre.tg {
 .opcard:active { transform: scale(.99); }
 .opcard .top { display: flex; justify-content: space-between; gap: var(--sp-2); align-items: baseline; }
 .opcard .folio { font-weight: 600; font-size: var(--t-subhead); letter-spacing: -0.01em; }
-.opcard .amt { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.opcard .amt {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  flex: none;
+}
+.opcard .amt .cur { font-size: var(--t-caption); font-weight: 500; color: var(--label-2); }
+.opcard .folio { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .opcard .meta { color: var(--label-2); font-size: var(--t-footnote); margin-top: var(--sp-1); }
 
 /* El estado se dice con palabra, no solo con color. */

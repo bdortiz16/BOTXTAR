@@ -249,6 +249,25 @@ router.post('/operations/:id/status', wrap(async (req, res) => {
   res.json(await ops.getOperation(req.params.id));
 }));
 
+/** Resumen de la pantalla de inicio: como va el dia y que queda pendiente. */
+router.get('/dashboard', wrap(async (req, res) => {
+  const data = await report.dashboard({ tz: config.timezone });
+  const cuenta = await users.findByUsername(req.user);
+  const hora = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: config.timezone, hour: '2-digit', hour12: false,
+  }).format(new Date()));
+
+  res.json({
+    ...data,
+    user: {
+      username: req.user,
+      name: cuenta?.name || '',
+      role: cuenta?.role || '',
+    },
+    greeting: hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches',
+  });
+}));
+
 /* ------------------------------- informe -------------------------------- */
 
 router.get('/report', wrap(async (req, res) => {

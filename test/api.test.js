@@ -285,3 +285,59 @@ test('la cuenta creada sirve para entrar', async () => {
   assert.strictEqual(login.status, 200);
   assert.strictEqual(login.data.user, 'duenio');
 });
+
+test('el panel de inicio resume el dia y lo pendiente', async () => {
+  const hoy = require('../src/operations').today();
+
+  // Una operacion enviada y otra sin enviar, con fecha de hoy.
+  const enviada = await call('/api/operations', {
+    method: 'POST',
+    body: {
+      op_date: hoy, origin_country_id: 'peru', dest_country_id: 'colombia',
+      origin_amount: '10.000', rate: '1.000', delivery_type: 'TRANSFER',
+      destinations: [{ beneficiary_name: 'Ana', bank_name: 'Nequi', amount: '10.000.000' }],
+    },
+  });
+  assert.strictEqual(enviada.status, 201);
+  await call(`/api/operations/${enviada.data.id}/status`, { method: 'POST', body: { status: 'SENT' } });
+
+  const borrador = await call('/api/operations', {
+    method: 'POST',
+    body: {
+      op_date: hoy, origin_country_id: 'chile', dest_country_id: 'colombia',
+      origin_amount: '100.000', rate: '4,2', delivery_type: 'CASH',
+      destinations: [{ city: 'Cali', amount: '420.000' }],
+    },
+  });
+  assert.strictEqual(borrador.status, 201);
+
+  const r = await call('/api/dashboard');
+  assert.strictEqual(r.status, 200);
+  const d = r.data;
+
+  assert.ok(['Buenos días', 'Buenas tardes', 'Buenas noches'].includes(d.greeting));
+  assert.strictEqual(d.user.username, 'duenio');
+  assert.strictEqual(d.today, hoy);
+
+  assert.ok(d.today_totals.operations >= 2, 'cuenta las operaciones del dia');
+  const recibido = Object.fromEntries(d.today_totals.received.map((x) => [x.currency, x.amount]));
+  assert.strictEqual(recibido.PEN, '10000.00');
+  assert.strictEqual(recibido.CLP, '100000');
+
+  assert.ok(d.pending.sent_unpaid >= 1, 'lo enviado sin pagar queda pendiente');
+  assert.ok(d.pending.drafts >= 1, 'los borradores quedan pendientes de enviar');
+  const porPagar = Object.fromEntries(d.pending.amount.map((x) => [x.currency, x.amount]));
+  assert.strictEqual(porPagar.COP, '10000000', 'solo suma lo enviado, no los borradores');
+
+  assert.ok(Array.isArray(d.recent) && d.recent.length > 0);
+  assert.ok(d.recent[0].transfers || d.recent[0].cash_deliveries,
+    'las operaciones recientes vienen con sus destinos');
+});
+
+test('el panel no se ve sin sesion', async () => {
+  const guardada = cookie;
+  cookie = '';
+  const r = await call('/api/dashboard');
+  assert.strictEqual(r.status, 401);
+  cookie = guardada;
+});

@@ -241,19 +241,177 @@ function renderLogin() {
 
 /* -------------------------------- inicio -------------------------------- */
 
-function renderHome() {
+/** Iniciales para el avatar, a partir del nombre o del usuario. */
+function initials(name, username) {
+  const fuente = (name || username || '?').trim();
+  const partes = fuente.split(/[\s._@-]+/).filter(Boolean);
+  const letras = partes.length >= 2
+    ? partes[0][0] + partes[1][0]
+    : fuente.slice(0, 2);
+  return letras.toUpperCase();
+}
+
+function moneyLines(list, vacio = 'Sin movimientos') {
+  if (!list || !list.length) return `<div class="muted small">${vacio}</div>`;
+  return list.map((r) => `
+    <div class="line">
+      <span class="k">${esc(r.currency)}</span>
+      <span class="v">${esc(r.display)}</span>
+    </div>`).join('');
+}
+
+/**
+ * Pantalla de inicio.
+ *
+ * Antes se entraba directo a la cuadricula de paises, que responde "que voy a
+ * hacer" pero no "como va el dia". Ahora el resumen va primero y el alta de un
+ * envio es la accion principal.
+ */
+async function renderHome() {
   state.screen = 'home';
   state.step = 0;
-  setHeader('ENVIOS', `Operador: ${state.user}`, false);
   $('#btn-report').classList.remove('hidden');
   $('#btn-settings').classList.remove('hidden');
+  $('#btn-back').classList.add('hidden');
 
   const avisos = state.catalog.warnings || [];
+  setHeader('Inicio', '', false);
+  view.innerHTML = '<div class="muted small center mt">Cargando…</div>';
+
+  let data;
+  try {
+    data = await api('/dashboard');
+  } catch (err) {
+    view.innerHTML = '';
+    view.append(h(`<div class="alert bad">${esc(err.message)}</div>`));
+    return;
+  }
+
+  const nombre = data.user.name || data.user.username;
+  const hoy = data.today_totals;
+  const mes = data.month_totals;
+  const pend = data.pending;
+  setHeader('Inicio', `${esc(data.today)}`, false);
+
+  view.innerHTML = '';
+  view.append(h(`
+    <section class="greeting">
+      <span class="avatar" aria-hidden="true">${esc(initials(data.user.name, data.user.username))}</span>
+      <span class="greeting-text">
+        <span class="hi">${esc(data.greeting)},</span>
+        <strong>${esc(nombre)}</strong>
+      </span>
+    </section>
+
+    <div id="avisos"></div>
+
+    <div class="panel">
+      <h2>Hoy</h2>
+      <div class="stats stats-3">
+        <div class="stat">
+          <div class="k">Operaciones</div>
+          <div class="v">${hoy.operations}</div>
+        </div>
+        <div class="stat">
+          <div class="k">Destinos</div>
+          <div class="v">${hoy.transfers + hoy.cash_deliveries}</div>
+        </div>
+        <div class="stat ${pend.sent_unpaid || pend.drafts ? 'attention' : ''}">
+          <div class="k">Por pagar</div>
+          <div class="v">${pend.sent_unpaid}</div>
+        </div>
+      </div>
+      <div class="summary mt">
+        <div class="sublabel">Recibido de clientes</div>
+        ${moneyLines(hoy.received, 'Todavía no hay envíos hoy')}
+        <div class="sublabel">Pagado</div>
+        ${moneyLines(hoy.paid, '—')}
+        ${Number(hoy.usdt.quantity) > 0
+          ? `<div class="line"><span class="k">USDT vendidos</span><span class="v">${esc(hoy.usdt.quantity_display)}</span></div>`
+          : ''}
+      </div>
+    </div>
+
+    <button class="btn big-action" id="nueva">
+      <span class="ico" aria-hidden="true">＋</span>
+      <span class="txt">
+        <strong>Nuevo envío</strong>
+        <small>Monto, tasa y destinos</small>
+      </span>
+    </button>
+
+    <div class="tiles">
+      <button class="tile" id="t-informe">
+        <span class="ico" aria-hidden="true">📊</span>
+        <strong>Informe</strong>
+        <small>${mes.operations} este mes</small>
+      </button>
+      <button class="tile" id="t-pendientes">
+        <span class="ico" aria-hidden="true">🕒</span>
+        <strong>Pendientes</strong>
+        <small>${pend.drafts} sin enviar</small>
+      </button>
+      <button class="tile" id="t-ajustes">
+        <span class="ico" aria-hidden="true">⚙️</span>
+        <strong>Ajustes</strong>
+        <small>Telegram y cuenta</small>
+      </button>
+    </div>
+
+    ${pend.amount.length ? `
+    <div class="panel">
+      <h2>Enviado y sin marcar como pagado</h2>
+      <div class="summary">${moneyLines(pend.amount)}</div>
+      <div class="hint">Marca cada operación como pagada cuando salga del banco, para que el pendiente refleje la realidad.</div>
+    </div>` : ''}
+
+    <div class="panel">
+      <h2>Últimas operaciones</h2>
+      <div class="oplist" id="recent"></div>
+    </div>
+  `));
+
+  // Los avisos van compactos: informan sin quedarse con la primera pantalla.
+  const caja = $('#avisos');
+  if (avisos.length) {
+    const grave = avisos.some((w) => w.level === 'bad');
+    const resumen = h(`
+      <details class="notice ${grave ? 'bad' : ''}">
+        <summary>
+          <span class="dot" aria-hidden="true"></span>
+          ${avisos.length === 1 ? 'Hay 1 aviso de configuración' : `Hay ${avisos.length} avisos de configuración`}
+        </summary>
+        <div class="notice-body">
+          ${avisos.map((w) => `<p>${esc(w.text)}</p>`).join('')}
+        </div>
+      </details>
+    `);
+    caja.append(resumen);
+  }
+
+  $('#nueva').addEventListener('click', renderPickCountry);
+  $('#t-informe').addEventListener('click', () => renderReport());
+  $('#t-ajustes').addEventListener('click', () => renderSettings().catch((e) => toast(e.message, 'bad')));
+  $('#t-pendientes').addEventListener('click', () => renderReport({ status: 'DRAFT' }));
+
+  const lista = $('#recent');
+  if (!data.recent.length) {
+    lista.append(h('<div class="muted small">Todavía no hay operaciones registradas.</div>'));
+  } else {
+    for (const op of data.recent) lista.append(opCard(op));
+  }
+  window.scrollTo({ top: 0 });
+}
+
+/** Fecha y cuadricula de paises: el primer paso del alta de un envio. */
+function renderPickCountry() {
+  state.screen = 'pick-country';
+  setHeader('Nuevo envío', 'Elige la fecha y el país', true);
+
   const countries = state.catalog.countries.filter((c) => Number(c.is_origin) === 1);
 
   view.innerHTML = '';
   view.append(h(`
-    ${avisos.map((w) => `<div class="alert ${w.level === 'bad' ? 'bad' : ''}">${esc(w.text)}</div>`).join('')}
     <div class="panel">
       <h2>Fecha de la operación</h2>
       <input type="date" id="op-date" value="${esc(state.catalog.today)}">
@@ -263,11 +421,6 @@ function renderHome() {
     <span class="badge-title">ENVIOS</span>
     <div class="panel">
       <div class="countries" id="grid"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Últimas operaciones</h2>
-      <div class="oplist" id="recent"><div class="muted small">Cargando…</div></div>
     </div>
   `));
 
@@ -293,22 +446,12 @@ function renderHome() {
   `).firstElementChild;
   add.addEventListener('click', renderNewCountry);
   grid.append(add);
-
-  loadRecent();
+  window.scrollTo({ top: 0 });
 }
 
-async function loadRecent() {
-  try {
-    const { operations } = await api('/operations?limit=8');
-    const box = $('#recent');
-    if (!box) return;
-    box.innerHTML = '';
-    if (!operations.length) {
-      box.append(h('<div class="muted small">Todavía no hay operaciones registradas.</div>'));
-      return;
-    }
-    for (const op of operations) box.append(opCard(op));
-  } catch { /* la lista es informativa; si falla no bloquea el alta */ }
+function countryName(id) {
+  const c = (state.catalog?.countries || []).find((x) => x.id === id);
+  return c ? `${c.emoji} ${c.name}`.trim() : id;
 }
 
 function opCard(op) {
@@ -318,10 +461,10 @@ function opCard(op) {
     <button class="opcard" data-id="${op.id}">
       <div class="top">
         <span class="folio">${esc(op.folio)} <span class="pill ${op.status}">${esc(STATUS_LABEL[op.status] || op.status)}</span></span>
-        <span class="amt">${esc(fmt(parseAmount(op.dest_amount), dd))} ${esc(op.dest_currency)}</span>
+        <span class="amt">${esc(fmt(parseAmount(op.dest_amount), dd))} <span class="cur">${esc(op.dest_currency)}</span></span>
       </div>
       <div class="meta">
-        ${esc(op.op_date)} · ${esc(op.origin_country_id)} ·
+        ${esc(op.op_date)} · ${esc(countryName(op.origin_country_id))} ·
         ${esc(fmt(parseAmount(op.origin_amount), od))} ${esc(op.origin_currency)} × ${esc(op.rate)} ·
         ${op.delivery_type === 'CASH' ? 'efectivo' : 'transferencia'}${(op.transfers?.length || op.cash_deliveries?.length || 1) > 1 ? ` (${op.transfers.length || op.cash_deliveries.length} destinos)` : ''}
       </div>
@@ -382,7 +525,7 @@ function renderNewCountry() {
       });
       await refreshCatalog();
       toast('País agregado', 'ok');
-      renderHome();
+      renderPickCountry();
     } catch (err) {
       toast(err.message, 'bad');
     }
@@ -1085,7 +1228,7 @@ async function openOperation(id) {
       if (!confirm('¿Anular esta operación? No sumará en el informe.')) return;
       await api(`/operations/${id}/status`, { method: 'POST', body: { status: 'CANCELLED' } });
       toast('Operación anulada');
-      renderHome();
+      goHome();
     });
   } catch (err) {
     toast(err.message, 'bad');
@@ -1094,9 +1237,9 @@ async function openOperation(id) {
 
 /* -------------------------------- informe ------------------------------- */
 
-async function renderReport() {
+async function renderReport({ status } = {}) {
   state.screen = 'report';
-  setHeader('Informe', 'Resumen contable', true);
+  setHeader('Informe', status === 'DRAFT' ? 'Operaciones sin enviar' : 'Resumen contable', true);
   const today = state.catalog.today;
   const first = `${today.slice(0, 8)}01`;
 
@@ -1108,19 +1251,28 @@ async function renderReport() {
         <div class="field"><label for="r-from">Desde</label><input type="date" id="r-from" value="${esc(first)}"></div>
         <div class="field"><label for="r-to">Hasta</label><input type="date" id="r-to" value="${esc(today)}"></div>
       </div>
-      <div class="field">
-        <label for="r-country">Pais</label>
-        <select id="r-country">
-          <option value="">Todos</option>
-          ${state.catalog.countries.map((c) => `<option value="${esc(c.id)}">${esc(c.emoji)} ${esc(c.name)}</option>`).join('')}
-        </select>
+      <div class="row">
+        <div class="field">
+          <label for="r-country">País</label>
+          <select id="r-country">
+            <option value="">Todos</option>
+            ${state.catalog.countries.map((c) => `<option value="${esc(c.id)}">${esc(c.emoji)} ${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label for="r-status">Estado</label>
+          <select id="r-status">
+            <option value="">Todos</option>
+            ${['DRAFT', 'SENT', 'COMPLETED', 'CANCELLED'].map((st) => `<option value="${st}" ${status === st ? 'selected' : ''}>${esc(STATUS_LABEL[st])}</option>`).join('')}
+          </select>
+        </div>
       </div>
       <div class="btnrow">
         <button class="btn" id="r-go" type="button">Ver</button>
         <button class="btn ghost" id="r-csv" type="button">Exportar CSV</button>
       </div>
     </div>
-    <div id="r-out"><div class="muted small center">Elige un rango y toca VER.</div></div>
+    <div id="r-out"><div class="muted small center">Elige un rango y toca Ver.</div></div>
   `));
 
   const query = () => {
@@ -1128,6 +1280,7 @@ async function renderReport() {
     if ($('#r-from').value) p.set('from', $('#r-from').value);
     if ($('#r-to').value) p.set('to', $('#r-to').value);
     if ($('#r-country').value) p.set('country', $('#r-country').value);
+    if ($('#r-status').value) p.set('status', $('#r-status').value);
     return p.toString();
   };
 
@@ -1341,7 +1494,16 @@ function goBack() {
     renderWizard();
     return;
   }
-  renderHome();
+  // Desde el primer paso se vuelve a elegir pais; desde ahi, al inicio.
+  if (state.screen === 'wizard') {
+    renderPickCountry();
+    return;
+  }
+  goHome();
+}
+
+function goHome() {
+  renderHome().catch((err) => toast(err.message, 'bad'));
 }
 
 /**
@@ -1378,7 +1540,7 @@ async function boot() {
     return;
   }
   await refreshCatalog();
-  renderHome();
+  await renderHome();
 }
 
 boot();

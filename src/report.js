@@ -159,4 +159,47 @@ function toCsv(report) {
   return rows.join('\n');
 }
 
-module.exports = { build, toCsv };
+/**
+ * Resumen para la pantalla de inicio.
+ *
+ * Responde las dos preguntas con las que se abre la app: como va el dia y que
+ * queda pendiente. Todo sale de las mismas funciones del informe, para que un
+ * numero nunca discrepe entre las dos pantallas.
+ */
+async function dashboard({ tz } = {}) {
+  const hoy = ops.today(tz);
+  const primeroDelMes = `${hoy.slice(0, 8)}01`;
+
+  const [delDia, delMes, recientes] = await Promise.all([
+    build({ from: hoy, to: hoy }),
+    build({ from: primeroDelMes, to: hoy }),
+    ops.listOperations({ limit: 6 }),
+  ]);
+
+  // Lo que ya se envio al grupo pero todavia nadie marco como pagado.
+  const porPagar = new Map();
+  let borradores = 0;
+  let enviadas = 0;
+  for (const op of delMes.operations) {
+    if (op.status === 'DRAFT') borradores += 1;
+    if (op.status === 'SENT') {
+      enviadas += 1;
+      bucket(porPagar, op.dest_currency, money.parseAmount(op.dest_amount) ?? 0n);
+    }
+  }
+
+  return {
+    today: hoy,
+    month_from: primeroDelMes,
+    today_totals: delDia.totals,
+    month_totals: delMes.totals,
+    pending: {
+      drafts: borradores,
+      sent_unpaid: enviadas,
+      amount: dump(porPagar),
+    },
+    recent: recientes,
+  };
+}
+
+module.exports = { build, toCsv, dashboard };
