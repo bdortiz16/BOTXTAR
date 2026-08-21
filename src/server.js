@@ -4,6 +4,7 @@ const path = require('node:path');
 const express = require('express');
 const config = require('./config');
 const { init } = require('./db');
+const { setupPage } = require('./setup-page');
 const apiRouter = require('./routes/api');
 
 const app = express();
@@ -23,11 +24,14 @@ app.use(express.urlencoded({ extended: false, limit: '512kb' }));
 app.use((req, res, next) => {
   const problems = config.productionProblems();
   if (problems.length) {
-    // Mejor un error claro que una app que pierde datos o cierra sesiones sola.
-    res.status(500).json({
-      error: 'Configuracion incompleta',
-      problemas: problems,
-    });
+    // Mejor decir que falta que arrancar mal: perder operaciones o cerrar
+    // sesiones sin motivo aparente cuesta mucho mas diagnosticar.
+    // A un navegador se le responde con una pantalla legible; a la API, JSON.
+    if (req.accepts(['json', 'html']) === 'html') {
+      res.status(503).type('html').send(setupPage(problems));
+    } else {
+      res.status(503).json({ error: 'Configuracion incompleta', problemas: problems });
+    }
     return;
   }
   init().then(() => next(), next);

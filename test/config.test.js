@@ -22,16 +22,37 @@ test('en produccion avisa de lo que falta antes de atender peticiones', () => {
   assert.ok(problems.some((p) => /POSTGRES_URL/.test(p)), 'debe pedir Postgres en serverless');
 });
 
-test('el servidor responde 500 explicando la configuracion incompleta', async () => {
+test('la API responde con la lista de lo que falta', async () => {
   const app = require('../src/server');
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/catalog`);
-    assert.strictEqual(res.status, 500);
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/catalog`, {
+      headers: { accept: 'application/json' },
+    });
+    assert.strictEqual(res.status, 503);
     const body = await res.json();
     assert.strictEqual(body.error, 'Configuracion incompleta');
     assert.ok(Array.isArray(body.problemas) && body.problemas.length >= 3);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('un navegador recibe una pantalla que explica que configurar', async () => {
+  const app = require('../src/server');
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/`, {
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    });
+    assert.strictEqual(res.status, 503);
+    assert.match(res.headers.get('content-type'), /text\/html/);
+    const html = await res.text();
+    assert.match(html, /Falta configurar BOTXTAR/);
+    assert.match(html, /SESSION_SECRET/);
+    assert.match(html, /POSTGRES_URL/);
   } finally {
     await new Promise((r) => server.close(r));
   }
