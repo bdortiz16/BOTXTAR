@@ -1,0 +1,266 @@
+'use strict';
+
+const express = require('express');
+const { db } = require('../db');
+const config = require('../config');
+const money = require('../money');
+const currencies = require('../currencies');
+const ops = require('../operations');
+const telegram = require('../telegram');
+const report = require('../report');
+const auth = require('../auth');
+
+const router = express.Router();
+const { ValidationError } = money;
+
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+function slugify(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    .slice(0, 40);
+}
+
+/* ------------------------------ sesion ---------------------------------- */
+
+router.post('/auth/login', (req, res) => {
+  const session = auth.login(req.body?.user, req.body?.password);
+  if (!session) return res.status(401).json({ error: 'Usuario o clave incorrectos' });
+  auth.setSessionCookie(res, session);
+  res.json({ user: session.user });
+});
+
+router.post('/auth/logout', (req, res) => {
+  auth.clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+router.get('/auth/me', (req, res) => {
+  if (!config.authEnabled) return res.json({ user: 'local', auth_required: false });
+  const session = auth.verify(auth.parseCookies(req.headers.cookie)[auth.COOKIE]);
+  if (!session) return res.status(401).json({ error: 'No autenticado', auth_required: true });
+  res.json({ user: session.user, auth_required: true });
+});
+
+router.use(auth.requireAuth);
+
+/* ------------------------------ catalogo -------------------------------- */
+
+router.get('/catalog', (req, res) => {
+  const countries = db.prepare(
+    'SELECT * FROM countries WHERE active = 1 ORDER BY sort_order, name'
+  ).all();
+  const banks = db.prepare('SELECT * FROM banks WHERE active = 1 ORDER BY name').all();
+  const banksByCountry = {};
+  for (const b of banks) {
+    (banksByCountry[b.country_id] ||= []).push(b.name);
+  }
+  res.json({
+    countries: countries.map((c) => ({ ...c, decimals: currencies.decimalsFor(c.currency) })),
+    banks: banksByCountry,
+    currencies: currencies.list(),
+    today: ops.today(),
+    telegram_enabled: config.telegramEnabled,
+    user: req.user,
+  });
+});
+
+/** Alta de pais: cubre el "otros paises" que hoy no existe en los grupos. */
+router.post('/countries', (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) throw new ValidationError('El pais necesita un nombre');
+  const id = slugify(req.body?.id || name);
+  if (!id) throw new ValidationError('Nombre de pais invalido');
+  const currency = String(req.body?.currency || '').trim().toUpperCase();
+  if (!/^[A-Z]{3,5}$/.test(currency)) {
+    throw new ValidationError('Codigo de moneda invalido (ej: COP, PEN, USD)');
+  }
+  if (db.prepare('SELECT 1 FROM countries WHERE id = ?').get(id)) {
+    throw new ValidationError(`Ya existe un pais con el identificador "${id}"`);
+  }
+  const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM countries').get().m;
+  db.prepare(`INSERT INTO countries (id, name, emoji, currency, telegram_chat_id,
+              telegram_thread_id, color, sort_order, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, name,
+    String(req.body?.emoji || '🌎').slice(0, 8),
+    currency,
+    String(req.body?.telegram_chat_id || '').trim(),
+    String(req.body?.telegram_thread_id || '').trim(),
+    String(req.body?.color || '#3f51b5').slice(0, 12),
+    Number(maxOrder) + 10,
+    new Date().toISOString()
+  );
+  ops.audit(req.user, 'COUNTRY_CREATE', null, id);
+  res.status(201).json(db.prepare('SELECT * FROM countries WHERE id = ?').get(id));
+});
+
+router.patch('/countries/:id', (req, res) => {
+  const current = db.prepare('SELECT * FROM countries WHERE id = ?').get(req.params.id);
+  if (!current) throw new ValidationError('Pais no encontrado');
+  const fields = ['name', 'emoji', 'currency', 'telegram_chat_id', 'telegram_thread_id',
+                  'color', 'active', 'sort_order', 'is_origin', 'is_destination'];
+  const sets = [];
+  const params = [];
+  for (const f of fields) {
+    if (!(f in (req.body || {}))) continue;
+    let v = req.body[f];
+    if (['active', 'sort_order', 'is_origin', 'is_destination'].includes(f)) v = Number(v) || 0;
+    else if (f === 'currency') v = String(v).trim().toUpperCase();
+    else v = String(v ?? '').trim();
+    sets.push(`${f} = ?`);
+    params.push(v);
+  }
+  if (!sets.length) return res.json(current);
+  params.push(req.params.id);
+  db.prepare(`UPDATE countries SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  ops.audit(req.user, 'COUNTRY_UPDATE', null, req.params.id);
+  res.json(db.prepare('SELECT * FROM countries WHERE id = ?').get(req.params.id));
+});
+
+router.post('/countries/:id/banks', (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) throw new ValidationError('El banco necesita un nombre');
+  if (!db.prepare('SELECT 1 FROM countries WHERE id = ?').get(req.params.id)) {
+    throw new ValidationError('Pais no encontrado');
+  }
+  db.prepare('INSERT INTO banks (country_id, name) VALUES (?, ?) ON CONFLICT DO NOTHING')
+    .run(req.params.id, name);
+  res.status(201).json({ country_id: req.params.id, name });
+});
+
+/* ----------------------------- operaciones ------------------------------ */
+
+/** Calculo en vivo: el formulario lo llama mientras se escribe monto y tasa. */
+router.post('/operations/preview', (req, res) => {
+  res.json(ops.preview(req.body || {}));
+});
+
+/**
+ * Vista previa del mensaje de Telegram para una operacion que todavia no se
+ * guarda, para poder revisarla antes de crear nada.
+ */
+router.post('/operations/preview-message', (req, res) => {
+  const built = ops.buildOperation(req.body || {}, req.user);
+  const draft = {
+    ...built,
+    folio: `${built.op_date.replace(/-/g, '')}-nueva`,
+    origin_country: ops.getCountry(built.origin_country_id),
+    dest_country: ops.getCountry(built.dest_country_id),
+  };
+  const { chatId } = telegram.resolveChat(draft.origin_country);
+  res.json({ text: telegram.renderMessage(draft), chat_id: chatId });
+});
+
+router.get('/operations', (req, res) => {
+  res.json({
+    operations: ops.listOperations({
+      from: req.query.from, to: req.query.to, country: req.query.country,
+      status: req.query.status, limit: Number(req.query.limit || 200),
+      offset: Number(req.query.offset || 0),
+    }),
+  });
+});
+
+router.get('/operations/:id', (req, res) => {
+  const op = ops.getOperation(req.params.id);
+  if (!op) return res.status(404).json({ error: 'Operacion no encontrada' });
+  res.json(op);
+});
+
+router.post('/operations', (req, res) => {
+  const built = ops.buildOperation(req.body || {}, req.user);
+  const id = ops.insertOperation(built);
+  res.status(201).json(ops.getOperation(id));
+});
+
+router.put('/operations/:id', (req, res) => {
+  const built = ops.buildOperation(req.body || {}, req.user);
+  ops.updateOperation(Number(req.params.id), built);
+  res.json(ops.getOperation(req.params.id));
+});
+
+/** Vista previa del mensaje tal cual llegara al grupo, antes de enviar. */
+router.get('/operations/:id/preview-message', (req, res) => {
+  const op = ops.getOperation(req.params.id);
+  if (!op) return res.status(404).json({ error: 'Operacion no encontrada' });
+  const { chatId } = telegram.resolveChat(op.origin_country);
+  res.json({ text: telegram.renderMessage(op), chat_id: chatId });
+});
+
+/** Boton ENVIAR: manda la notificacion al grupo del pais y marca la operacion. */
+router.post('/operations/:id/send', wrap(async (req, res) => {
+  const op = ops.getOperation(req.params.id);
+  if (!op) return res.status(404).json({ error: 'Operacion no encontrada' });
+  if (op.status === 'CANCELLED') throw new ValidationError('La operacion esta anulada');
+  if (op.status === 'SENT' && !req.body?.resend) {
+    return res.status(409).json({
+      error: 'Esta operacion ya fue enviada. Marca "reenviar" si quieres mandarla otra vez.',
+      operation: op,
+    });
+  }
+
+  const result = await telegram.sendOperation(op);
+  if (!result.sent) {
+    ops.audit(req.user, 'SEND_FAILED', op.id, result.reason);
+    return res.status(502).json({ error: result.reason, text: result.text, operation: op });
+  }
+  ops.markSent(op.id, { chatId: result.chatId, messageId: result.messageId });
+  ops.audit(req.user, 'SENT', op.id, `chat=${result.chatId} msg=${result.messageId}`);
+  res.json({ ok: true, text: result.text, operation: ops.getOperation(op.id) });
+}));
+
+router.post('/operations/:id/status', (req, res) => {
+  ops.setStatus(Number(req.params.id), String(req.body?.status || ''), req.user);
+  res.json(ops.getOperation(req.params.id));
+});
+
+/* ------------------------------- informe -------------------------------- */
+
+router.get('/report', (req, res) => {
+  res.json(report.build({
+    from: req.query.from, to: req.query.to,
+    country: req.query.country, status: req.query.status,
+  }));
+});
+
+router.get('/report.csv', (req, res) => {
+  const data = report.build({
+    from: req.query.from, to: req.query.to,
+    country: req.query.country, status: req.query.status,
+  });
+  const name = `botxtar_${data.range.from || 'inicio'}_${data.range.to || 'hoy'}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  res.send('﻿' + report.toCsv(data)); // BOM para que Excel lea los acentos
+});
+
+/* -------------------------------- ajustes ------------------------------- */
+
+router.get('/settings/template', (req, res) => {
+  res.json({ template: telegram.getTemplate(), default: telegram.DEFAULT_TEMPLATE });
+});
+
+router.put('/settings/template', (req, res) => {
+  const template = telegram.setTemplate(req.body?.template);
+  ops.audit(req.user, 'TEMPLATE_UPDATE', null, '');
+  res.json({ template });
+});
+
+router.get('/telegram/status', wrap(async (req, res) => {
+  const status = await telegram.getMe();
+  const countries = db.prepare(
+    'SELECT id, name, emoji, telegram_chat_id FROM countries WHERE active = 1 ORDER BY sort_order'
+  ).all();
+  res.json({
+    ...status,
+    fallback_chat_id: config.telegram.fallbackChatId,
+    countries: countries.map((c) => ({
+      ...c,
+      configured: Boolean(c.telegram_chat_id || config.telegram.fallbackChatId),
+    })),
+  });
+}));
+
+module.exports = router;

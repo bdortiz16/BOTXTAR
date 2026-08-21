@@ -1,0 +1,19 @@
+{
+  "name": "botxtar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gestion contable de envios (remesas) con notificacion a Telegram por pais",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
