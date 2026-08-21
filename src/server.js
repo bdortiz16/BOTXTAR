@@ -4,7 +4,7 @@ const path = require('node:path');
 const express = require('express');
 const config = require('./config');
 const { init } = require('./db');
-const { setupPage } = require('./setup-page');
+const { ensureSecret } = require('./secret');
 const apiRouter = require('./routes/api');
 
 const app = express();
@@ -22,19 +22,7 @@ app.use(express.urlencoded({ extended: false, limit: '512kb' }));
  * instancia espera, y si falla se reintenta en la siguiente.
  */
 app.use((req, res, next) => {
-  const problems = config.productionProblems();
-  if (problems.length) {
-    // Mejor decir que falta que arrancar mal: perder operaciones o cerrar
-    // sesiones sin motivo aparente cuesta mucho mas diagnosticar.
-    // A un navegador se le responde con una pantalla legible; a la API, JSON.
-    if (req.accepts(['json', 'html']) === 'html') {
-      res.status(503).type('html').send(setupPage(problems));
-    } else {
-      res.status(503).json({ error: 'Configuracion incompleta', problemas: problems });
-    }
-    return;
-  }
-  init().then(() => next(), (err) => {
+  init().then(() => ensureSecret()).then(() => next(), (err) => {
     // Sin esto, no poder abrir la base salia como un 500 sin explicacion.
     err.status = 503;
     err.message = `No se pudo abrir la base de datos: ${err.message}. `
@@ -85,13 +73,7 @@ if (require.main === module) {
   app.listen(config.port, () => {
     console.log(`BOTXTAR escuchando en http://localhost:${config.port}`);
     console.log(`[datos] ${config.usesPostgres ? 'Postgres' : `SQLite en ${config.dbFile}`}`);
-    if (!config.authEnabled) {
-      console.warn('[aviso] Sin ADMIN_PASSWORD/APP_USERS: la app corre SIN clave. No la publiques asi.');
-    }
-    if (!config.telegramEnabled) {
-      console.warn('[aviso] Sin TELEGRAM_BOT_TOKEN: las operaciones se guardan pero no se envian.');
-    }
-    for (const p of config.productionProblems()) console.error('[configuracion]', p);
+    for (const w of config.warnings()) console.warn(`[aviso] ${w.text}`);
   });
 }
 

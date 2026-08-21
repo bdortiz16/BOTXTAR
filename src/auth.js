@@ -2,19 +2,20 @@
 
 const crypto = require('node:crypto');
 const config = require('./config');
+const { currentSecret } = require('./secret');
 
 const COOKIE = 'botxtar_session';
 
 function sign(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const mac = crypto.createHmac('sha256', config.sessionSecret).update(body).digest('base64url');
+  const mac = crypto.createHmac('sha256', currentSecret()).update(body).digest('base64url');
   return `${body}.${mac}`;
 }
 
 function verify(token) {
   if (typeof token !== 'string' || !token.includes('.')) return null;
   const [body, mac] = token.split('.');
-  const expected = crypto.createHmac('sha256', config.sessionSecret).update(body).digest('base64url');
+  const expected = crypto.createHmac('sha256', currentSecret()).update(body).digest('base64url');
   const a = Buffer.from(mac);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;

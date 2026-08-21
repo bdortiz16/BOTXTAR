@@ -93,6 +93,7 @@ router.get('/catalog', wrap(async (req, res) => {
     today: ops.today(),
     telegram_enabled: config.telegramEnabled,
     storage_ephemeral: config.ephemeralStorage,
+    warnings: config.warnings(),
     user: req.user,
   });
 }));

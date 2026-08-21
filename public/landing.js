@@ -80,7 +80,13 @@ async function submit(form, url, body) {
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+    if (!res.ok) {
+      // Algunos errores traen el detalle aparte; sin esto solo se veia el
+      // titulo y no habia forma de saber que arreglar.
+      const detalle = Array.isArray(data.problemas) ? data.problemas.join(' ') : '';
+      throw new Error([data.error, detalle].filter(Boolean).join(' — ')
+        || `Error ${res.status}`);
+    }
     message('Listo, entrando…', 'ok');
     window.location.href = '/app';
   } catch (err) {

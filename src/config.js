@@ -92,35 +92,46 @@ config.allowAnonymous = bool(process.env.ALLOW_ANONYMOUS, false)
   && (process.env.NODE_ENV || 'development') !== 'production';
 
 /**
- * Revisa la configuracion antes de atender peticiones en produccion.
+ * Avisos sobre como quedo montada la instancia.
  *
- * Son fallos silenciosos, y por eso peligrosos: sin SESSION_SECRET cada
- * instancia firma con una clave distinta y las sesiones se caen al azar; sin
- * Postgres en un entorno serverless la base se borra en cada despliegue.
+ * Antes esto bloqueaba el arranque, y eso resulto peor que el problema que
+ * intentaba evitar: dejaba la app inservible con un mensaje que no decia que
+ * arreglar. Ahora la app funciona siempre y los avisos se muestran dentro,
+ * donde se ven y se pueden atender sin adivinar.
  */
-function productionProblems() {
-  if (config.env !== 'production') return [];
-  const problems = [];
+function warnings() {
+  const list = [];
 
-  if (!process.env.SESSION_SECRET) {
-    problems.push('Falta SESSION_SECRET. Sin el, las sesiones se cierran solas. ' +
-      'Genera uno con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  if (config.ephemeralStorage) {
+    list.push({
+      code: 'SIN_BASE',
+      level: 'bad',
+      text: 'No hay base de datos conectada: las operaciones se guardan en memoria y '
+        + 'se borran solas. Sirve para revisar la app, todavia no para llevar la '
+        + 'contabilidad. Conecta Postgres (POSTGRES_URL) cuando puedas.',
+    });
   }
-  if (!config.authEnabled && !config.signupCode) {
-    problems.push('Falta SIGNUP_CODE (el codigo para crear cuentas) o APP_USERS. '
-      + 'Sin ninguno de los dos, cualquiera que encuentre la direccion podria entrar.');
+  if (!config.signupCode && !config.authEnabled) {
+    list.push({
+      code: 'REGISTRO_ABIERTO',
+      level: 'warn',
+      text: 'Cualquiera que llegue a la direccion puede crear la primera cuenta. '
+        + 'Define SIGNUP_CODE para que haga falta un codigo de invitacion.',
+    });
   }
-  return problems;
+  if (!config.telegramEnabled) {
+    list.push({
+      code: 'SIN_TELEGRAM',
+      level: 'warn',
+      text: 'Telegram no esta configurado: las operaciones se guardan pero no se '
+        + 'envian al grupo. Falta TELEGRAM_BOT_TOKEN.',
+    });
+  }
+  return list;
 }
 
-/**
- * Sin Postgres en serverless la app funciona, pero guarda en /tmp: los datos
- * duran lo que dure la instancia. No se bloquea el arranque (sirve para
- * probar la interfaz), pero se avisa en pantalla para que nadie confunda esto
- * con contabilidad guardada.
- */
 config.ephemeralStorage = !config.databaseUrl && SERVERLESS;
-config.productionProblems = productionProblems;
+config.warnings = warnings;
 config.authEnabled = config.users.size > 0;
 
 module.exports = config;

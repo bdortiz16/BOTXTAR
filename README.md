@@ -74,7 +74,7 @@ PGTEST_URL=postgres://usuario@host:5432 npm run test:pg   # contra Postgres
 | Variable | Para que sirve |
 | --- | --- |
 | `POSTGRES_URL` / `DATABASE_URL` | Base Postgres. **Obligatoria en Vercel.** Si no esta, se usa SQLite en disco. |
-| `SESSION_SECRET` | Firma de la sesion. Obligatoria en produccion. |
+| `SESSION_SECRET` | Firma de la sesion. Opcional: si falta, se genera y se guarda sola. |
 | `SIGNUP_CODE` | Codigo de invitacion para crear cuentas desde la pagina. |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de BotFather. Sin el, la app guarda pero no envia. |
 | `TELEGRAM_FALLBACK_CHAT_ID` | Grupo para los paises que aun no tienen el suyo. |
@@ -83,9 +83,11 @@ PGTEST_URL=postgres://usuario@host:5432 npm run test:pg   # contra Postgres
 | `DB_FILE` | Ruta del archivo SQLite, solo si no se usa Postgres. |
 | `ALLOW_ANONYMOUS` | Modo sin clave para trastear en local. Se ignora en produccion. |
 
-> En produccion la app **no atiende peticiones** si falta `SESSION_SECRET` o
-> si no hay forma de controlar quien entra. Muestra una pantalla explicando
-> que falta, en vez de cerrar sesiones sin motivo aparente.
+> **Nada de esto bloquea el arranque.** La app funciona sin ninguna variable
+> configurada y muestra los avisos dentro, en la pantalla principal, donde se
+> ven y se pueden atender. Bloquear el arranque resultaba peor que el problema
+> que intentaba evitar: dejaba la app inservible con un mensaje que no decia
+> que arreglar.
 
 ### Modo de prueba (sin base de datos)
 
