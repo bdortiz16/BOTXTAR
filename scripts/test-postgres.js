@@ -12,7 +12,7 @@ const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const baseUrl = (process.env.PGTEST_URL || 'postgres://postgres@127.0.0.1:5432').replace(/\/$/, '');
-const FILES = ['operations', 'telegram', 'users', 'banks', 'api'];
+const FILES = ['operations', 'telegram', 'telegram-link', 'users', 'banks', 'api'];
 
 function psql(dbUrl, sql) {
   execFileSync('psql', [dbUrl, '-v', 'ON_ERROR_STOP=1', '-q', '-c', sql], { stdio: 'pipe' });
@@ -20,7 +20,8 @@ function psql(dbUrl, sql) {
 
 let failed = 0;
 for (const name of FILES) {
-  const dbName = `botxtar_test_${name}`;
+  // El nombre del archivo puede llevar guiones; en SQL habria que citarlos.
+  const dbName = `botxtar_test_${name.replace(/[^a-z0-9]/gi, '_')}`;
   psql(`${baseUrl}/postgres`, `DROP DATABASE IF EXISTS ${dbName}`);
   psql(`${baseUrl}/postgres`, `CREATE DATABASE ${dbName}`);
   console.log(`\n=== ${name} contra Postgres ===`);

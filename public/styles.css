@@ -844,6 +844,32 @@ pre.tg {
 .pill.COMPLETED { background: var(--accent-soft); color: var(--green); }
 .pill.CANCELLED { background: var(--red-soft); color: var(--red); }
 
+/* --------------------------- grupos de Telegram -------------------------- */
+
+.chat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--separator);
+}
+.chat-row:last-child { border-bottom: 0; }
+.chat-info { min-width: 0; flex: 1; }
+.chat-info strong {
+  display: block;
+  font-size: var(--t-subhead);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.chat-info small {
+  display: block;
+  font-size: var(--t-caption);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.chat-row select { flex: none; width: 46%; }
+
 /* -------------------------------- avisos -------------------------------- */
 
 .toast {

@@ -348,6 +348,47 @@ async function sendOperation(op, { template } = {}) {
   return { sent: false, reason: lastErr?.message || 'Error desconocido', text, chatId };
 }
 
+/** Manda un mensaje suelto a un chat, sin fallar si Telegram lo rechaza. */
+async function notifyChat(chatId, text) {
+  if (!config.telegramEnabled || !chatId) return { sent: false };
+  try {
+    const result = await callApi('sendMessage', {
+      chat_id: String(chatId),
+      text,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+    });
+    return { sent: true, messageId: result.message_id };
+  } catch (err) {
+    console.error('[telegram] no se pudo avisar al grupo:', err.message);
+    return { sent: false, reason: err.message };
+  }
+}
+
+/**
+ * Conecta el webhook: Telegram avisara a esta direccion cada vez que pase algo
+ * (que agreguen el bot a un grupo, un comando, etc.).
+ *
+ * Se usa webhook y no consultas periodicas porque la app corre en serverless:
+ * no hay un proceso vivo que pueda estar preguntando.
+ */
+async function setWebhook(url, secretToken) {
+  return callApi('setWebhook', {
+    url,
+    secret_token: secretToken,
+    allowed_updates: ['message', 'my_chat_member'],
+    drop_pending_updates: true,
+  });
+}
+
+async function deleteWebhook() {
+  return callApi('deleteWebhook', { drop_pending_updates: false });
+}
+
+async function getWebhookInfo() {
+  return callApi('getWebhookInfo', {});
+}
+
 /** Verifica el token y devuelve el usuario del bot (para la pantalla de ajustes). */
 async function getMe() {
   if (!config.telegramEnabled) return { ok: false, reason: 'TELEGRAM_BOT_TOKEN no configurado' };
@@ -396,4 +437,5 @@ module.exports = {
   PRESETS, DEFAULT_TEMPLATE, getTemplate, setTemplate,
   renderMessage, renderForOperation, renderDestinations, renderDestinationsSimple, renderUsdt,
   sendOperation, resolveChat, getMe, esc, formatDateTime, docLabel, sampleOperation,
+  notifyChat, setWebhook, deleteWebhook, getWebhookInfo,
 };

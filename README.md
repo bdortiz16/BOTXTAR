@@ -130,14 +130,27 @@ vive en `/app`.
 
 Un solo bot atiende todos los paises; lo que cambia es el grupo destino.
 
-1. Agrega el bot al grupo del pais y dale permiso de escribir.
-2. Escribe cualquier mensaje en el grupo.
-3. Abre `https://api.telegram.org/bot<TOKEN>/getUpdates` y copia el
-   `chat.id` (el de un grupo empieza por `-100`).
-4. Pegalo en **Ajustes › Grupo por pais**.
+> **La API de bots de Telegram no permite crear grupos.** Ningun bot puede:
+> crear un grupo solo lo hace una cuenta de persona. Lo que si se automatiza
+> es todo lo demas.
 
-Si el grupo usa temas (foros), guarda ademas el `message_thread_id` del tema
-en el campo correspondiente del pais.
+1. En **Ajustes › Conexion automatica**, toca **Conectar**. Eso registra el
+   webhook: Telegram avisara a la app cada vez que pase algo con el bot.
+2. Crea el grupo en Telegram con el nombre del pais (por ejemplo
+   *BRASIL - PAGOS DE CLIENTES*) y agrega el bot.
+3. Listo. La app detecta el grupo y, si el nombre menciona un pais que no
+   tenga grupo todavia, lo vincula sola y avisa en el grupo.
+
+Si el nombre no dice el pais, el bot lo pide: se escribe `/vincular brasil`
+dentro del grupo, o se elige el pais en **Ajustes › Grupos detectados**.
+
+Otros comandos dentro del grupo: `/estado` dice a que pais esta vinculado.
+Si sacan al bot del grupo, el pais queda sin grupo en vez de apuntar a uno
+perdido.
+
+El campo de **Grupo por pais** sigue estando por si se prefiere pegar el
+`chat.id` a mano. Si el grupo usa temas (foros), ahi se guarda ademas el
+`message_thread_id`.
 
 ### Formato del mensaje
 
@@ -238,7 +251,7 @@ api/index.js      punto de entrada para Vercel
 public/
   index.html      pagina publica de botxtar.com
   app.html        la aplicacion
-test/             90 pruebas, que corren contra SQLite y contra Postgres
+test/             106 pruebas, que corren contra SQLite y contra Postgres
 ```
 
 Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es

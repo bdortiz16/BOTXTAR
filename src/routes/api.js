@@ -10,6 +10,33 @@ const telegram = require('../telegram');
 const report = require('../report');
 const auth = require('../auth');
 const users = require('../users');
+const updates = require('../telegram-updates');
+const crypto = require('node:crypto');
+
+const WEBHOOK_SECRET_KEY = 'telegram_webhook_secret';
+
+/** Ajustes guardados en la base, para no repetir el mismo par de consultas. */
+const settings = {
+  async get(key) {
+    const row = await db.get('SELECT value FROM settings WHERE key = ?', [key]);
+    return row?.value || '';
+  },
+  async set(key, value) {
+    await db.run(
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+      [key, value]
+    );
+    return value;
+  },
+};
+
+/** Comparacion en tiempo constante, para no filtrar el secreto por timing. */
+function secretsMatch(esperado, recibido) {
+  const a = Buffer.from(String(esperado));
+  const b = Buffer.from(String(recibido));
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
 
 const router = express.Router();
 const { ValidationError } = money;
@@ -86,6 +113,29 @@ router.get('/auth/me', (req, res) => {
   if (!session) return res.status(401).json({ error: 'No autenticado', auth_required: true });
   res.json({ user: session.user, auth_required: true });
 });
+
+/* --------------------- webhook de Telegram (publico) --------------------- */
+
+/**
+ * Telegram avisa aqui cuando pasa algo con el bot.
+ *
+ * Va antes de exigir sesion porque quien llama es Telegram, no una persona.
+ * A cambio se verifica el token secreto que se fijo al conectar el webhook, y
+ * se compara en tiempo constante.
+ */
+router.post('/telegram/webhook', wrap(async (req, res) => {
+  const esperado = await settings.get(WEBHOOK_SECRET_KEY);
+  const recibido = req.get('X-Telegram-Bot-Api-Secret-Token') || '';
+
+  if (!esperado || !secretsMatch(esperado, recibido)) {
+    return res.status(401).json({ error: 'Token de webhook invalido' });
+  }
+
+  // Se responde 200 pase lo que pase: un error aqui haria que Telegram
+  // reintentara la misma actualizacion en bucle.
+  const resultado = await updates.handleUpdate(req.body);
+  res.json({ ok: true, ...resultado });
+}));
 
 router.use(auth.requireAuth);
 
@@ -352,13 +402,69 @@ router.post('/settings/template/preview', wrap(async (req, res) => {
   }
 }));
 
+/**
+ * Conecta el webhook usando la direccion publica desde la que se abrio la app,
+ * que es la que Telegram tiene que poder alcanzar.
+ */
+router.post('/telegram/connect', wrap(async (req, res) => {
+  if (!config.telegramEnabled) {
+    throw new ValidationError('Falta TELEGRAM_BOT_TOKEN: sin el bot no hay nada que conectar');
+  }
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+  if (!host || /^(localhost|127\.0\.0\.1)/.test(host)) {
+    throw new ValidationError(
+      'Telegram necesita una direccion publica con HTTPS. Esto hay que hacerlo desde el sitio desplegado, no en local.'
+    );
+  }
+
+  const secreto = await settings.set(WEBHOOK_SECRET_KEY, crypto.randomBytes(24).toString('hex'));
+  const url = `${proto}://${host}/api/telegram/webhook`;
+  await telegram.setWebhook(url, secreto);
+  await ops.audit(req.user, 'TELEGRAM_WEBHOOK', null, url);
+
+  const info = await telegram.getWebhookInfo();
+  res.json({ ok: true, url, info });
+}));
+
+router.post('/telegram/disconnect', wrap(async (req, res) => {
+  await telegram.deleteWebhook();
+  await settings.set(WEBHOOK_SECRET_KEY, '');
+  await ops.audit(req.user, 'TELEGRAM_WEBHOOK_OFF', null, '');
+  res.json({ ok: true });
+}));
+
+/** Grupos donde esta el bot, vinculados o no. */
+router.get('/telegram/chats', wrap(async (req, res) => {
+  res.json({ chats: await updates.listChats() });
+}));
+
+router.post('/telegram/chats/:chatId/link', wrap(async (req, res) => {
+  const countryId = String(req.body?.country_id || '').trim();
+  if (!countryId) {
+    await updates.unlinkChat(req.params.chatId);
+    return res.json({ ok: true, linked: null });
+  }
+  await ops.getCountry(countryId);   // valida que exista
+  await updates.linkChat(req.params.chatId, countryId);
+  await ops.audit(req.user, 'TELEGRAM_LINK', null, `${req.params.chatId} -> ${countryId}`);
+  res.json({ ok: true, linked: countryId });
+}));
+
 router.get('/telegram/status', wrap(async (req, res) => {
   const status = await telegram.getMe();
   const countries = await db.all(
     'SELECT id, name, emoji, telegram_chat_id FROM countries WHERE active = 1 ORDER BY sort_order'
   );
+  let webhook = null;
+  if (status.ok) {
+    webhook = await telegram.getWebhookInfo().catch(() => null);
+  }
   res.json({
     ...status,
+    webhook: webhook ? { url: webhook.url || '', pending: webhook.pending_update_count || 0,
+                         last_error: webhook.last_error_message || '' } : null,
+    chats: await updates.listChats(),
     fallback_chat_id: config.telegram.fallbackChatId,
     countries: countries.map((c) => ({
       ...c,

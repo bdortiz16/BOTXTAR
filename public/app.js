@@ -1513,7 +1513,35 @@ async function renderSettings() {
     </div>
 
     <div class="panel">
+      <h2>Conexión automática</h2>
+      ${status.ok ? `
+        <div class="summary">
+          <div class="line">
+            <span class="k">Estado</span>
+            <span class="v">${status.webhook?.url ? 'Conectado' : 'Sin conectar'}</span>
+          </div>
+          ${status.webhook?.last_error
+            ? `<div class="line"><span class="k">Último error</span><span class="v">${esc(status.webhook.last_error)}</span></div>`
+            : ''}
+        </div>
+        <div class="btnrow mt">
+          <button class="btn" id="tg-connect" type="button">${status.webhook?.url ? 'Reconectar' : 'Conectar'}</button>
+          ${status.webhook?.url ? '<button class="btn ghost" id="tg-disconnect" type="button">Desconectar</button>' : ''}
+        </div>
+        <div class="hint">Con esto conectado, el bot detecta solo cuando lo agregas a un grupo.
+        Crea el grupo en Telegram, agrega a <b>@${esc(status.bot.username)}</b> y listo: si el nombre
+        del grupo dice el país, queda vinculado sin hacer nada más.</div>
+      ` : '<div class="hint">Configura primero TELEGRAM_BOT_TOKEN.</div>'}
+    </div>
+
+    <div class="panel">
+      <h2>Grupos detectados</h2>
+      <div id="chats-detectados"></div>
+    </div>
+
+    <div class="panel">
       <h2>Grupo por país</h2>
+      <div class="hint" style="margin-top:0">Solo hace falta tocar esto si prefieres pegar el ID a mano.</div>
       <div id="chats"></div>
     </div>
 
@@ -1579,6 +1607,65 @@ async function renderSettings() {
   $('#p-mejorado').addEventListener('click', () => { $('#tpl').value = tpl.presets.mejorado; refreshPreview(); });
   $('#p-clasico').addEventListener('click', () => { $('#tpl').value = tpl.presets.clasico; refreshPreview(); });
   refreshPreview();
+
+  // Grupos donde ya esta el bot, con su pais asignado.
+  const detectados = $('#chats-detectados');
+  const lista = status.chats || [];
+  if (!lista.length) {
+    detectados.append(h(`<div class="muted small">Todavía no hay ningún grupo.
+      Crea uno en Telegram y agrega el bot: aparecerá aquí solo.</div>`));
+  } else {
+    for (const c of lista) {
+      const fila = h(`
+        <div class="chat-row">
+          <div class="chat-info">
+            <strong>${esc(c.title || 'Grupo sin nombre')}</strong>
+            <small>${esc(c.chat_id)}${c.status === 'LEFT' ? ' · el bot ya no está' : ''}</small>
+          </div>
+          <select aria-label="País de ${esc(c.title || c.chat_id)}">
+            <option value="">Sin asignar</option>
+            ${state.catalog.countries.map((p) => `<option value="${esc(p.id)}" ${p.id === c.country_id ? 'selected' : ''}>${esc(p.emoji)} ${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+      `).firstElementChild;
+      fila.querySelector('select').addEventListener('change', async (e) => {
+        try {
+          await api(`/telegram/chats/${encodeURIComponent(c.chat_id)}/link`, {
+            method: 'POST', body: { country_id: e.target.value },
+          });
+          await refreshCatalog();
+          toast(e.target.value ? 'Grupo vinculado' : 'Grupo sin asignar', 'ok');
+          renderSettings();
+        } catch (err) {
+          toast(err.message, 'bad');
+        }
+      });
+      detectados.append(fila);
+    }
+  }
+
+  $('#tg-connect')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const r = await api('/telegram/connect', { method: 'POST', body: {} });
+      toast('Bot conectado. Ya detecta los grupos solo.', 'ok');
+      renderSettings();
+    } catch (err) {
+      toast(err.message, 'bad');
+      btn.disabled = false;
+    }
+  });
+
+  $('#tg-disconnect')?.addEventListener('click', async () => {
+    try {
+      await api('/telegram/disconnect', { method: 'POST', body: {} });
+      toast('Bot desconectado');
+      renderSettings();
+    } catch (err) {
+      toast(err.message, 'bad');
+    }
+  });
 
   const chats = $('#chats');
   for (const c of state.catalog.countries) {

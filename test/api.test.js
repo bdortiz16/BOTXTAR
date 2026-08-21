@@ -289,6 +289,12 @@ test('la cuenta creada sirve para entrar', async () => {
 test('el panel de inicio resume el dia y lo pendiente', async () => {
   const hoy = require('../src/operations').today();
 
+  // Se mide la diferencia y no el total: otras pruebas de este archivo crean
+  // operaciones, y algunas caen en "hoy" segun el dia en que se corra.
+  const antes = (await call('/api/dashboard')).data;
+  const suma = (lista, moneda) =>
+    Number(lista.find((x) => x.currency === moneda)?.amount || 0);
+
   // Una operacion enviada y otra sin enviar, con fecha de hoy.
   const enviada = await call('/api/operations', {
     method: 'POST',
@@ -319,15 +325,25 @@ test('el panel de inicio resume el dia y lo pendiente', async () => {
   assert.strictEqual(d.user.username, 'duenio');
   assert.strictEqual(d.today, hoy);
 
-  assert.ok(d.today_totals.operations >= 2, 'cuenta las operaciones del dia');
-  const recibido = Object.fromEntries(d.today_totals.received.map((x) => [x.currency, x.amount]));
-  assert.strictEqual(recibido.PEN, '10000.00');
-  assert.strictEqual(recibido.CLP, '100000');
+  assert.strictEqual(d.today_totals.operations - antes.today_totals.operations, 2,
+    'cuenta las dos operaciones nuevas del dia');
+  assert.strictEqual(
+    suma(d.today_totals.received, 'PEN') - suma(antes.today_totals.received, 'PEN'), 10000,
+    'suma los soles recibidos'
+  );
+  assert.strictEqual(
+    suma(d.today_totals.received, 'CLP') - suma(antes.today_totals.received, 'CLP'), 100000,
+    'suma los pesos chilenos sin mezclarlos con los soles'
+  );
 
-  assert.ok(d.pending.sent_unpaid >= 1, 'lo enviado sin pagar queda pendiente');
-  assert.ok(d.pending.drafts >= 1, 'los borradores quedan pendientes de enviar');
-  const porPagar = Object.fromEntries(d.pending.amount.map((x) => [x.currency, x.amount]));
-  assert.strictEqual(porPagar.COP, '10000000', 'solo suma lo enviado, no los borradores');
+  assert.strictEqual(d.pending.sent_unpaid - antes.pending.sent_unpaid, 1,
+    'lo enviado sin pagar queda pendiente');
+  assert.strictEqual(d.pending.drafts - antes.pending.drafts, 1,
+    'los borradores quedan pendientes de enviar');
+  assert.strictEqual(
+    suma(d.pending.amount, 'COP') - suma(antes.pending.amount, 'COP'), 10000000,
+    'solo suma lo enviado, no los borradores'
+  );
 
   assert.ok(Array.isArray(d.recent) && d.recent.length > 0);
   assert.ok(d.recent[0].transfers || d.recent[0].cash_deliveries,
@@ -340,4 +356,95 @@ test('el panel no se ve sin sesion', async () => {
   const r = await call('/api/dashboard');
   assert.strictEqual(r.status, 401);
   cookie = guardada;
+});
+
+test('el webhook de Telegram rechaza a quien no traiga el secreto', async () => {
+  const { db } = require('../src/db');
+  await db.run(
+    "INSERT INTO settings (key, value) VALUES ('telegram_webhook_secret', 'secreto-de-prueba') "
+    + 'ON CONFLICT (key) DO UPDATE SET value = excluded.value'
+  );
+
+  const cuerpo = {
+    my_chat_member: {
+      chat: { id: -100777, title: 'ECUADOR pagos', type: 'supergroup' },
+      new_chat_member: { status: 'member' },
+    },
+  };
+
+  // Sin cabecera: no pasa.
+  const sinSecreto = await fetch(base + '/api/telegram/webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo),
+  });
+  assert.strictEqual(sinSecreto.status, 401);
+
+  // Con un secreto equivocado: tampoco.
+  const malSecreto = await fetch(base + '/api/telegram/webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': 'otro' },
+    body: JSON.stringify(cuerpo),
+  });
+  assert.strictEqual(malSecreto.status, 401);
+
+  // Y el grupo no quedo registrado por los intentos fallidos.
+  const antes = await db.get("SELECT chat_id FROM telegram_chats WHERE chat_id = '-100777'");
+  assert.strictEqual(antes, undefined);
+
+  // Con el secreto correcto: se procesa y se vincula solo.
+  const bien = await fetch(base + '/api/telegram/webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': 'secreto-de-prueba' },
+    body: JSON.stringify(cuerpo),
+  });
+  assert.strictEqual(bien.status, 200);
+  assert.strictEqual((await bien.json()).country_id, 'ecuador');
+
+  const pais = await db.get("SELECT telegram_chat_id FROM countries WHERE id = 'ecuador'");
+  assert.strictEqual(pais.telegram_chat_id, '-100777');
+});
+
+test('el webhook no se puede llamar sin sesion ni secreto configurado', async () => {
+  const { db } = require('../src/db');
+  await db.run("UPDATE settings SET value = '' WHERE key = 'telegram_webhook_secret'");
+  const r = await fetch(base + '/api/telegram/webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': '' },
+    body: JSON.stringify({}),
+  });
+  assert.strictEqual(r.status, 401, 'sin webhook conectado no se acepta nada');
+});
+
+test('los grupos detectados se pueden listar y reasignar desde la app', async () => {
+  const lista = await call('/api/telegram/chats');
+  assert.strictEqual(lista.status, 200);
+  const chat = lista.data.chats.find((c) => c.chat_id === '-100777');
+  assert.ok(chat, 'el grupo detectado aparece en la lista');
+  assert.strictEqual(chat.country_id, 'ecuador');
+  assert.strictEqual(chat.title, 'ECUADOR pagos');
+
+  // Reasignar a otro pais.
+  const mover = await call('/api/telegram/chats/-100777/link', {
+    method: 'POST', body: { country_id: 'venezuela' },
+  });
+  assert.strictEqual(mover.status, 200);
+
+  const { db } = require('../src/db');
+  const venezuela = await db.get("SELECT telegram_chat_id FROM countries WHERE id = 'venezuela'");
+  const ecuador = await db.get("SELECT telegram_chat_id FROM countries WHERE id = 'ecuador'");
+  assert.strictEqual(venezuela.telegram_chat_id, '-100777');
+  assert.strictEqual(ecuador.telegram_chat_id, '', 'el pais anterior queda libre');
+
+  // Y desvincular.
+  await call('/api/telegram/chats/-100777/link', { method: 'POST', body: { country_id: '' } });
+  const despues = await db.get("SELECT telegram_chat_id FROM countries WHERE id = 'venezuela'");
+  assert.strictEqual(despues.telegram_chat_id, '');
+});
+
+test('conectar el webhook exige una direccion publica', async () => {
+  // La prueba corre en 127.0.0.1: Telegram no podria alcanzarla.
+  const r = await call('/api/telegram/connect', { method: 'POST', body: {} });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.data.error, /direccion publica|HTTPS/i);
 });

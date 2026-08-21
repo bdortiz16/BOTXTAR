@@ -122,6 +122,18 @@ function ddl({ pk }) {
       last_login_at TEXT
     )`,
 
+    `CREATE TABLE IF NOT EXISTS telegram_chats (
+      chat_id     TEXT PRIMARY KEY,
+      title       TEXT NOT NULL DEFAULT '',
+      type        TEXT NOT NULL DEFAULT '',
+      country_id  TEXT,
+      status      TEXT NOT NULL DEFAULT 'MEMBER',
+      can_post    INTEGER NOT NULL DEFAULT 1,
+      detected_at TEXT NOT NULL,
+      updated_at  TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_tgchats_country ON telegram_chats(country_id)',
+
     `CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
