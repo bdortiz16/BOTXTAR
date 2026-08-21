@@ -335,6 +335,18 @@ dialog.modal::backdrop { background: rgba(10, 9, 8, .72); }
 .field input:focus { outline: 2px solid var(--violet-2); outline-offset: -1px; border-color: transparent; }
 .field .sub { font-size: .78rem; color: var(--muted); margin-top: 6px; }
 
+/* Nota sobre el almacenamiento: informa sin parecer un error. */
+.storage-note {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #241f14;
+  border: 1px solid #4a3c1e;
+  color: #e0c98a;
+  font-size: .82rem;
+  line-height: 1.5;
+}
+
 .msg {
   border-radius: 6px; padding: 11px 13px; font-size: .86rem; margin-bottom: 16px;
   border: 1px solid var(--rule); background: #100f0d;

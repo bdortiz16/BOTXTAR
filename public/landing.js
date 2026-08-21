@@ -22,14 +22,14 @@ function message(text, kind) {
   msgBox.appendChild(el);
 }
 
-function showTab(which) {
+function showTab(which, { keepMessage } = {}) {
   const login = which === 'login';
   tabLogin.setAttribute('aria-selected', String(login));
   tabRegister.setAttribute('aria-selected', String(!login));
   formLogin.hidden = !login;
   formRegister.hidden = login;
-  message('');
-  if (!login) loadSignupState();
+  if (!keepMessage) message('');
+  loadSignupState();
   setTimeout(() => (login ? $('#li-user') : $('#re-name')).focus(), 60);
 }
 
@@ -51,6 +51,7 @@ async function loadSignupState() {
       const res = await fetch('/api/auth/signup-state');
       signupState = await res.json();
     }
+    avisoAlmacenamiento();
     codeField.hidden = !signupState.code_required;
     $('#re-code').required = Boolean(signupState.code_required);
 
@@ -67,6 +68,26 @@ async function loadSignupState() {
   }
 }
 
+/**
+ * Con almacenamiento temporal la cuenta se pierde cuando el servidor se
+ * reinicia. Decirlo en la propia ventana evita que alguien pruebe su clave
+ * cinco veces creyendo que la escribio mal.
+ */
+function avisoAlmacenamiento() {
+  const caja = $('#storage-note');
+  if (!caja || !signupState) return;
+  if (!signupState.storage_ephemeral) {
+    caja.hidden = true;
+    return;
+  }
+  caja.hidden = false;
+  caja.textContent = signupState.env_accounts
+    ? 'Los datos de esta instancia son temporales. Tu cuenta puede haberse borrado; '
+      + 'las credenciales configuradas por el administrador siguen funcionando.'
+    : 'Los datos de esta instancia son temporales: si el servidor se reinicio, '
+      + 'tendras que crear tu cuenta otra vez.';
+}
+
 async function submit(form, url, body) {
   const button = form.querySelector('button[type=submit]');
   const original = button.textContent;
@@ -81,8 +102,17 @@ async function submit(form, url, body) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      // Algunos errores traen el detalle aparte; sin esto solo se veia el
-      // titulo y no habia forma de saber que arreglar.
+      if (data.code === 'SIN_CUENTAS') {
+        button.disabled = false;
+        button.textContent = original;
+        // No es un error de credenciales: no hay con que compararlas.
+        signupState = null;
+        const usuario = $('#li-user').value.trim();
+        showTab('register', { keepMessage: true });
+        message(data.error, 'bad');
+        if (usuario) $('#re-user').value = usuario;
+        return;
+      }
       const detalle = Array.isArray(data.problemas) ? data.problemas.join(' ') : '';
       throw new Error([data.error, detalle].filter(Boolean).join(' — ')
         || `Error ${res.status}`);

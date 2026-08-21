@@ -28,6 +28,18 @@ function slugify(s) {
 router.post('/auth/login', wrap(async (req, res) => {
   const session = await auth.login(req.body?.user, req.body?.password);
   if (!session) {
+    // Sin ninguna cuenta guardada, decir "clave incorrecta" es enganioso: no
+    // hay con que comparar. Pasa cuando el almacenamiento es temporal y la
+    // instancia se reinicio, y la salida es crear la cuenta otra vez.
+    if (await users.count() === 0 && !config.authEnabled) {
+      return res.status(401).json({
+        code: 'SIN_CUENTAS',
+        error: config.ephemeralStorage
+          ? 'No hay ninguna cuenta guardada. Como todavia no hay base de datos, '
+            + 'los datos se borran cuando el servidor se reinicia. Crea tu cuenta de nuevo.'
+          : 'Todavia no hay ninguna cuenta. Crea la primera para entrar.',
+      });
+    }
     return res.status(401).json({
       error: 'Usuario o clave incorrectos. Revisa que el usuario sea el mismo con el que creaste la cuenta.',
     });
@@ -58,6 +70,8 @@ router.get('/auth/signup-state', wrap(async (req, res) => {
     first_account: total === 0,
     code_required: Boolean(config.signupCode),
     open: total === 0 || Boolean(config.signupCode),
+    storage_ephemeral: config.ephemeralStorage,
+    env_accounts: config.authEnabled,
   });
 }));
 

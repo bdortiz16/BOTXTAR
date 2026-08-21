@@ -102,9 +102,17 @@ guarda en `/tmp`, que se borra cuando la instancia se recicla. Sirve para
 revisar la interfaz; no para llevar la contabilidad.
 
 En ese modo la app muestra un aviso rojo permanente en la pantalla principal.
-Se quita solo en cuanto se conecta una base. Para entrar mientras tanto,
-usa las credenciales de `APP_USERS`: son las unicas que sobreviven a que se
-reinicie la instancia.
+Se quita solo en cuanto se conecta una base.
+
+**Las cuentas creadas desde la pagina tambien se borran.** Cuando eso pasa, el
+login lo dice tal cual —"no hay ninguna cuenta guardada"— y lleva a crearla de
+nuevo, en vez de culpar a la clave. Para tener un acceso estable mientras
+tanto, define `APP_USERS`: son credenciales que viven en la variable de
+entorno, asi que sobreviven a cualquier reinicio.
+
+```
+APP_USERS=bryan:tu-clave-secreta
+```
 
 ### Cuentas
 
@@ -230,7 +238,7 @@ api/index.js      punto de entrada para Vercel
 public/
   index.html      pagina publica de botxtar.com
   app.html        la aplicacion
-test/             87 pruebas, que corren contra SQLite y contra Postgres
+test/             90 pruebas, que corren contra SQLite y contra Postgres
 ```
 
 Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es

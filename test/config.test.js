@@ -114,3 +114,80 @@ test('la sesion firmada sobrevive entre peticiones', async () => {
     await new Promise((r) => server.close(r));
   }
 });
+
+test('sin ninguna cuenta, el login no miente diciendo "clave incorrecta"', async () => {
+  const app = require('../src/server');
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    // Se borran las cuentas para simular una instancia reciclada.
+    const { db } = require('../src/db');
+    await db.run('DELETE FROM users');
+
+    const r = await fetch(base + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: 'bryandavidortiz51@gmail.com', password: 'la-que-sea' }),
+    });
+    assert.strictEqual(r.status, 401);
+    const body = await r.json();
+    assert.strictEqual(body.code, 'SIN_CUENTAS');
+    assert.match(body.error, /No hay ninguna cuenta/i);
+    assert.match(body.error, /se borran|base de datos/i,
+      'debe explicar por que desaparecio la cuenta');
+    assert.ok(!/clave incorrect/i.test(body.error),
+      'no puede culpar a la clave cuando no hay con que compararla');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('el estado del registro avisa que el almacenamiento es temporal', async () => {
+  const app = require('../src/server');
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/auth/signup-state`);
+    const data = await res.json();
+    assert.strictEqual(data.storage_ephemeral, true);
+    assert.strictEqual(data.first_account, true);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('con credenciales por variable, una clave mala si es una clave mala', async () => {
+  const config = require('../src/config');
+  config.users.set('respaldo', 'clave-de-respaldo');
+  config.authEnabled = true;
+  try {
+    const app = require('../src/server');
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server.once('listening', r));
+    try {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const mala = await fetch(base + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: 'respaldo', password: 'equivocada' }),
+      });
+      assert.strictEqual(mala.status, 401);
+      assert.strictEqual((await mala.json()).code, undefined,
+        'aqui si hay con que comparar: es un error de credenciales');
+
+      const buena = await fetch(base + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: 'respaldo', password: 'clave-de-respaldo' }),
+      });
+      assert.strictEqual(buena.status, 200,
+        'las credenciales por variable sobreviven a que se borre la base');
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  } finally {
+    config.users.delete('respaldo');
+    config.authEnabled = false;
+  }
+});
