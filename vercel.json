@@ -9,7 +9,6 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/((?!_next|favicon.ico).*)", "destination": "/api" }
+    { "source": "/(.*)", "destination": "/api" }
   ]
 }
