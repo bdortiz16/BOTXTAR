@@ -535,6 +535,50 @@ input.bad { border-color: var(--red); }
 .row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
 @media (max-width: 380px) { .row-3 { grid-template-columns: 1fr 1fr; } }
 
+/* -------------------------- selector con busqueda ----------------------- */
+
+.combo { position: relative; }
+
+.combo-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: var(--sp-1);
+  list-style: none;
+  max-height: 264px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg-elevated);
+  border: 1px solid var(--separator);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+}
+
+.combo-list li {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--t-callout);
+  cursor: pointer;
+  color: var(--label);
+}
+.combo-list li.active,
+.combo-list li:hover { background: var(--fill-2); }
+
+/* La opcion de guardar un banco nuevo se distingue del resto de la lista. */
+.combo-list li.combo-add {
+  color: var(--accent);
+  font-weight: 500;
+  border-top: 1px solid var(--separator);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  margin-top: var(--sp-1);
+}
+
 /* ------------------------------- botones -------------------------------- */
 
 .btn {

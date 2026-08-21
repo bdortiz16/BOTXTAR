@@ -153,21 +153,49 @@ const SEED_COUNTRIES = [
 
 /** Bancos mas usados por pais, para que el operador no tenga que escribirlos. */
 const SEED_BANKS = {
-  colombia: ['Bancolombia', 'Nequi', 'Daviplata', 'Davivienda', 'BBVA', 'Banco de Bogota',
-             'Banco de Occidente', 'Banco Caja Social', 'Scotiabank Colpatria', 'Itau',
-             'AV Villas', 'Banco Agrario', 'Banco Falabella', 'Lulo Bank', 'Nu', 'Movii'],
-  peru: ['BCP', 'BBVA', 'Interbank', 'Scotiabank', 'BanBif', 'Banco de la Nacion',
-         'Yape', 'Plin', 'Caja Arequipa', 'Caja Huancayo'],
-  chile: ['Banco de Chile', 'BancoEstado', 'Santander', 'BCI', 'Itau', 'Scotiabank',
-          'Banco Falabella', 'Mercado Pago', 'Tenpo'],
-  brasil: ['Nubank', 'Banco do Brasil', 'Itau', 'Bradesco', 'Caixa', 'Santander',
-           'Inter', 'C6 Bank', 'PicPay', 'PIX'],
-  mexico: ['BBVA', 'Banorte', 'Santander', 'Banamex', 'HSBC', 'Scotiabank', 'Azteca',
-           'Nu', 'Spin', 'Mercado Pago', 'STP'],
-  venezuela: ['Banesco', 'Mercantil', 'Provincial', 'Venezuela', 'BNC', 'Bancamiga',
-              'Pago Movil', 'Zelle'],
-  ecuador: ['Pichincha', 'Guayaquil', 'Produbanco', 'Pacifico', 'Bolivariano', 'JEP'],
-  usdt: ['Binance', 'Bybit', 'OKX', 'Wallet propia'],
+  colombia: [
+    'Bancolombia', 'Nequi', 'Daviplata', 'Davivienda', 'BBVA', 'Banco de Bogotá',
+    'Banco de Occidente', 'Banco Caja Social', 'Banco Popular', 'Scotiabank Colpatria',
+    'Itaú', 'AV Villas', 'Banco Agrario', 'Banco Falabella', 'Banco Pichincha',
+    'Banco GNB Sudameris', 'Banco Serfinanza', 'Banco Unión', 'Banco Finandina',
+    'Banco Mundo Mujer', 'Banco W', 'Bancamía', 'Bancoomeva', 'Coltefinanciera',
+    'Confiar', 'Cotrafa', 'Lulo Bank', 'Nu', 'Movii', 'Rappipay', 'Dale',
+    'Powwi', 'Iris', 'Ualá', 'Tpaga', 'Global66', 'Banco Contactar',
+  ],
+  peru: [
+    'BCP', 'BBVA', 'Interbank', 'Scotiabank', 'BanBif', 'Banco Pichincha',
+    'Banco de la Nación', 'Banco GNB', 'Mibanco', 'Banco Falabella', 'Banco Ripley',
+    'Yape', 'Plin', 'Caja Arequipa', 'Caja Huancayo', 'Caja Piura', 'Caja Cusco',
+    'Caja Trujillo', 'Caja Sullana', 'Compartamos', 'Ágora',
+  ],
+  chile: [
+    'Banco de Chile', 'BancoEstado', 'Santander', 'BCI', 'Itaú', 'Scotiabank',
+    'Banco Security', 'Banco BICE', 'Banco Consorcio', 'Banco Internacional',
+    'Banco Falabella', 'Banco Ripley', 'Coopeuch', 'Mercado Pago', 'Tenpo',
+    'MACH', 'Chek', 'Los Héroes', 'Caja Los Andes',
+  ],
+  brasil: [
+    'Nubank', 'Banco do Brasil', 'Itaú', 'Bradesco', 'Caixa', 'Santander',
+    'Inter', 'C6 Bank', 'BTG Pactual', 'Safra', 'Sicredi', 'Sicoob', 'Banrisul',
+    'PicPay', 'Mercado Pago', 'PagBank', 'Neon', 'Original', 'Will Bank', 'PIX',
+  ],
+  mexico: [
+    'BBVA', 'Banorte', 'Santander', 'Banamex', 'HSBC', 'Scotiabank', 'Inbursa',
+    'Banco Azteca', 'BanCoppel', 'Banregio', 'Afirme', 'Banca Mifel', 'BanBajío',
+    'Nu', 'Hey Banco', 'Klar', 'Spin by Oxxo', 'Mercado Pago', 'STP', 'Albo',
+  ],
+  venezuela: [
+    'Banesco', 'Mercantil', 'Provincial', 'Banco de Venezuela', 'BNC', 'Bancamiga',
+    'Banplus', 'Banco del Tesoro', 'Bancaribe', 'BOD', 'Banco Exterior',
+    'Banco Plaza', 'Banco Activo', 'Pago Móvil', 'Zelle', 'Zinli',
+  ],
+  ecuador: [
+    'Pichincha', 'Guayaquil', 'Produbanco', 'Pacífico', 'Bolivariano', 'Internacional',
+    'Austro', 'Machala', 'Solidario', 'JEP', 'Cooprogreso', 'Policía Nacional',
+    'DeUna', 'Banco Amazonas',
+  ],
+  usdt: ['Binance', 'Bybit', 'OKX', 'Bitget', 'KuCoin', 'Wallet propia', 'Trust Wallet'],
 };
+
 
 module.exports = { ddl, SEED_COUNTRIES, SEED_BANKS };

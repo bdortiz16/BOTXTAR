@@ -12,7 +12,7 @@ const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const baseUrl = (process.env.PGTEST_URL || 'postgres://postgres@127.0.0.1:5432').replace(/\/$/, '');
-const FILES = ['operations', 'telegram', 'users', 'api'];
+const FILES = ['operations', 'telegram', 'users', 'banks', 'api'];
 
 function psql(dbUrl, sql) {
   execFileSync('psql', [dbUrl, '-v', 'ON_ERROR_STOP=1', '-q', '-c', sql], { stdio: 'pipe' });

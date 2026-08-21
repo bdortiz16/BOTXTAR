@@ -36,8 +36,27 @@ async function seed() {
     await db.run('UPDATE countries SET name = ? WHERE id = ? AND name = ?', [nuevo, id, viejo]);
   }
 
+  /**
+   * Los nombres de banco pasaron a llevar acentos. Una base creada antes tiene
+   * la version sin acentos, y una insercion a secas dejaria las dos. Se
+   * renombra primero, y si por lo que sea ya conviven las dos, se borra la
+   * vieja. La busqueda del formulario ignora acentos, asi que escribir
+   * "bogota" sigue encontrando "Banco de Bogotá".
+   */
+  const sinAcentos = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
   for (const [countryId, names] of Object.entries(SEED_BANKS)) {
     for (const name of names) {
+      const viejo = sinAcentos(name);
+      if (viejo !== name) {
+        await db.run(
+          `DELETE FROM banks WHERE country_id = ? AND name = ?
+             AND EXISTS (SELECT 1 FROM banks b2 WHERE b2.country_id = ? AND b2.name = ?)`,
+          [countryId, viejo, countryId, name]
+        );
+        await db.run('UPDATE banks SET name = ? WHERE country_id = ? AND name = ?',
+          [name, countryId, viejo]);
+      }
       await db.run(
         `INSERT INTO banks (country_id, name) VALUES (?, ?)
          ON CONFLICT (country_id, name) DO NOTHING`,

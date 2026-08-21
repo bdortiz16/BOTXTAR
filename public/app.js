@@ -142,6 +142,131 @@ function decimalsOf(code) {
   return c ? c.decimals : 2;
 }
 
+/* --------------------------- selector con busqueda ---------------------- */
+
+let comboId = 0;
+
+/**
+ * Campo de texto con lista de sugerencias filtrada.
+ *
+ * Reemplaza al `datalist` del navegador, que Safari en iPhone no implementa:
+ * ahi el campo quedaba como texto libre y el banco se escribia a mano, con
+ * las erratas que eso trae. Sigue admitiendo un valor que no este en la
+ * lista, y ofrece guardarlo para la proxima.
+ */
+function attachCombo(input, opciones, { onAdd } = {}) {
+  const id = `combo-${++comboId}`;
+  const caja = document.createElement('div');
+  caja.className = 'combo';
+  input.parentNode.insertBefore(caja, input);
+  caja.appendChild(input);
+
+  const lista = document.createElement('ul');
+  lista.className = 'combo-list';
+  lista.id = id;
+  lista.setAttribute('role', 'listbox');
+  lista.hidden = true;
+  caja.appendChild(lista);
+
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-expanded', 'false');
+  input.setAttribute('aria-controls', id);
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('autocomplete', 'off');
+  input.setAttribute('autocorrect', 'off');
+  input.setAttribute('spellcheck', 'false');
+
+  let activo = -1;
+  let visibles = [];
+
+  const normaliza = (t) => String(t || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+  function cerrar() {
+    lista.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    activo = -1;
+  }
+
+  function elegir(valor) {
+    input.value = valor;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    cerrar();
+  }
+
+  function pintar() {
+    const q = normaliza(input.value);
+    visibles = q
+      ? opciones.filter((o) => normaliza(o).includes(q)).slice(0, 8)
+      : opciones.slice(0, 8);
+
+    const exacto = opciones.some((o) => normaliza(o) === q);
+    lista.innerHTML = '';
+
+    for (const o of visibles) {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      li.textContent = o;
+      li.addEventListener('mousedown', (e) => { e.preventDefault(); elegir(o); });
+      lista.appendChild(li);
+    }
+
+    // Un banco que no esta en la lista se puede usar igual y guardar.
+    if (q && !exacto && onAdd) {
+      const li = document.createElement('li');
+      li.className = 'combo-add';
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      li.textContent = `Usar y guardar «${input.value.trim()}»`;
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const valor = input.value.trim();
+        elegir(valor);
+        onAdd(valor);
+      });
+      lista.appendChild(li);
+    }
+
+    const hay = lista.children.length > 0;
+    lista.hidden = !hay;
+    input.setAttribute('aria-expanded', String(hay));
+    activo = -1;
+  }
+
+  function marcar(i) {
+    const items = [...lista.children];
+    items.forEach((el, n) => {
+      el.classList.toggle('active', n === i);
+      el.setAttribute('aria-selected', String(n === i));
+    });
+    if (items[i]) items[i].scrollIntoView({ block: 'nearest' });
+  }
+
+  input.addEventListener('focus', pintar);
+  input.addEventListener('input', pintar);
+  input.addEventListener('blur', () => setTimeout(cerrar, 120));
+  input.addEventListener('keydown', (e) => {
+    const items = [...lista.children];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (lista.hidden) { pintar(); return; }
+      e.preventDefault();
+      activo = e.key === 'ArrowDown'
+        ? Math.min(activo + 1, items.length - 1)
+        : Math.max(activo - 1, 0);
+      marcar(activo);
+    } else if (e.key === 'Enter' && !lista.hidden && activo >= 0) {
+      e.preventDefault();
+      items[activo].dispatchEvent(new Event('mousedown', { bubbles: true, cancelable: true }));
+    } else if (e.key === 'Escape') {
+      cerrar();
+    }
+  });
+
+  return input;
+}
+
 /* ------------------- campos de importe con formato en vivo --------------- */
 
 /**
@@ -743,7 +868,8 @@ function docTypesFor(countryId) {
 function stepDestinations() {
   const d = state.draft;
   const isTransfer = d.delivery_type === 'TRANSFER';
-  const banks = state.catalog.banks[d.dest_country_id] || [];
+  const banks = [...(state.catalog.banks[d.dest_country_id] || [])]
+    .sort((a, b) => a.localeCompare(b, 'es'));
 
   view.append(h(`
     ${stepsBar(3)}
@@ -798,8 +924,7 @@ function stepDestinations() {
           </div>
           <div class="field">
             <label>Banco</label>
-            <input data-k="bank_name" value="${esc(dest.bank_name)}" list="banks-${i}" placeholder="Escribe o elige">
-            <datalist id="banks-${i}">${bankList.map((b) => `<option value="${esc(b)}"></option>`).join('')}</datalist>
+            <input data-k="bank_name" class="bank" value="${esc(dest.bank_name)}" placeholder="Escribe para buscar">
           </div>
           <div class="row">
             <div class="field">
@@ -860,6 +985,23 @@ function stepDestinations() {
         </div>
       </div>
     `).firstElementChild;
+
+    const bankEl = el.querySelector('.bank');
+    if (bankEl) {
+      attachCombo(bankEl, bankList, {
+        onAdd: async (nombre) => {
+          try {
+            await api(`/countries/${d.dest_country_id}/banks`, { method: 'POST', body: { name: nombre } });
+            await refreshCatalog();
+            bankList.push(nombre);
+            bankList.sort((a, b) => a.localeCompare(b, 'es'));
+            toast(`«${nombre}» queda en la lista`, 'ok');
+          } catch (err) {
+            toast(err.message, 'bad');
+          }
+        },
+      });
+    }
 
     const decimals = decimalsOf(d.dest_currency);
     const amountEl = el.querySelector('.amount');

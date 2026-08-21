@@ -24,7 +24,9 @@ operacion queda guardada para el informe contable.
    vivo mientras se escribe. La tasa admite multiplicar o dividir.
 3. **Tipo de entrega.** Transferencia o entrega en efectivo.
    - *Transferencia*: nombre, tipo y numero de documento, banco, numero y tipo
-     de cuenta, y monto.
+     de cuenta, y monto. El banco se elige de una lista con busqueda (154
+     bancos y billeteras precargados); si falta alguno, se escribe y queda
+     guardado para la proxima. La busqueda ignora acentos y mayusculas.
    - *Efectivo*: ciudad, punto de entrega, quien recibe, telefono, hora y monto.
 4. **Fraccionamiento.** Si el cliente quiere el dinero repartido en varias
    cuentas, se agregan las que hagan falta. Una barra fija muestra
@@ -228,7 +230,7 @@ api/index.js      punto de entrada para Vercel
 public/
   index.html      pagina publica de botxtar.com
   app.html        la aplicacion
-test/             82 pruebas, que corren contra SQLite y contra Postgres
+test/             87 pruebas, que corren contra SQLite y contra Postgres
 ```
 
 Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es
