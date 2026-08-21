@@ -53,6 +53,10 @@ const config = {
   },
 
   users: parseUsers(),
+
+  // Codigo de invitacion para crear cuenta desde la pagina publica. Sin el,
+  // solo se puede crear la primera cuenta (la del dueño).
+  signupCode: (process.env.SIGNUP_CODE || '').trim(),
   sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
   sessionHours: Number(process.env.SESSION_HOURS || 12),
   secureCookies: bool(process.env.SECURE_COOKIES, process.env.NODE_ENV === 'production'),
@@ -63,6 +67,15 @@ const config = {
 
 config.telegramEnabled = Boolean(config.telegram.token);
 config.usesPostgres = Boolean(config.databaseUrl);
+
+/**
+ * Modo sin clave, solo para trastear en local. Hay que pedirlo a proposito:
+ * antes se activaba solo con que faltara APP_USERS, y desde que las cuentas
+ * viven en la base eso podia dejar una instancia entera abierta por olvidar
+ * una variable. En produccion se ignora.
+ */
+config.allowAnonymous = bool(process.env.ALLOW_ANONYMOUS, false)
+  && (process.env.NODE_ENV || 'development') !== 'production';
 
 /**
  * Revisa la configuracion antes de atender peticiones en produccion.
@@ -79,8 +92,9 @@ function productionProblems() {
     problems.push('Falta SESSION_SECRET. Sin el, las sesiones se cierran solas. ' +
       'Genera uno con: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
   }
-  if (!config.authEnabled) {
-    problems.push('Falta APP_USERS (o ADMIN_PASSWORD). La app quedaria abierta a cualquiera.');
+  if (!config.authEnabled && !config.signupCode) {
+    problems.push('Falta SIGNUP_CODE (el codigo para crear cuentas) o APP_USERS. '
+      + 'Sin ninguno de los dos, cualquiera que encuentre la direccion podria entrar.');
   }
   if (!config.databaseUrl && config.serverless) {
     problems.push('Falta POSTGRES_URL. En un entorno serverless el disco se borra: ' +

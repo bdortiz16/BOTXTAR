@@ -238,3 +238,50 @@ test('la vista previa del mensaje funciona sin guardar la operacion', async () =
   });
   assert.strictEqual(bad.status, 400);
 });
+
+test('la pagina publica se sirve en la raiz y la app en /app', async () => {
+  const home = await fetch(base + '/');
+  assert.strictEqual(home.status, 200);
+  const html = await home.text();
+  assert.match(html, /casas de remesas/i, 'la raiz es la pagina publica');
+  assert.match(html, /Crear cuenta/);
+
+  const appRes = await fetch(base + '/app');
+  assert.strictEqual(appRes.status, 200);
+  assert.match(await appRes.text(), /app\.js/, '/app sirve la aplicacion');
+});
+
+test('el estado del registro se puede consultar sin sesion', async () => {
+  const res = await fetch(base + '/api/auth/signup-state');
+  assert.strictEqual(res.status, 200);
+  const data = await res.json();
+  assert.strictEqual(typeof data.open, 'boolean');
+  assert.strictEqual(typeof data.code_required, 'boolean');
+});
+
+test('sin codigo de invitacion no se cuela un registro', async () => {
+  // Esta base ya tiene APP_USERS pero ninguna cuenta creada: la primera pasa.
+  const primera = await call('/api/auth/register', {
+    method: 'POST',
+    body: { user: 'duenio', password: 'clave-del-duenio', name: 'Duenio' },
+  });
+  assert.strictEqual(primera.status, 201);
+  assert.strictEqual(primera.data.role, 'OWNER');
+
+  const segunda = await call('/api/auth/register', {
+    method: 'POST',
+    body: { user: 'colado', password: 'clave-del-colado' },
+  });
+  assert.strictEqual(segunda.status, 403);
+  assert.match(segunda.data.error, /registro esta cerrado/i);
+});
+
+test('la cuenta creada sirve para entrar', async () => {
+  const r = await call('/auth/logout'.replace('/auth', '/api/auth'), { method: 'POST' });
+  assert.strictEqual(r.status, 200);
+  const login = await call('/api/auth/login', {
+    method: 'POST', body: { user: 'DUENIO', password: 'clave-del-duenio' },
+  });
+  assert.strictEqual(login.status, 200);
+  assert.strictEqual(login.data.user, 'duenio');
+});

@@ -222,39 +222,13 @@ function setHeader(title, subtitle, showBack) {
 
 /* ------------------------------- login ---------------------------------- */
 
+/**
+ * El acceso vive en la pagina publica, para no mantener dos pantallas de
+ * login distintas. Aqui solo se redirige con la ventana ya abierta.
+ */
 function renderLogin() {
   state.screen = 'login';
-  setHeader('BOTXTAR', 'Ingresa para continuar', false);
-  $('#btn-report').classList.add('hidden');
-  $('#btn-settings').classList.add('hidden');
-  view.innerHTML = '';
-  view.append(h(`
-    <form class="panel" id="login-form" autocomplete="on">
-      <h2>Acceso</h2>
-      <div class="field">
-        <label for="lg-user">Usuario</label>
-        <input id="lg-user" name="username" autocomplete="username" required>
-      </div>
-      <div class="field">
-        <label for="lg-pass">Clave</label>
-        <input id="lg-pass" name="password" type="password" autocomplete="current-password" required>
-      </div>
-      <button class="btn" type="submit">ENTRAR</button>
-    </form>
-  `));
-  $('#login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      const r = await api('/auth/login', {
-        method: 'POST',
-        body: { user: $('#lg-user').value, password: $('#lg-pass').value },
-      });
-      state.user = r.user;
-      await boot();
-    } catch (err) {
-      toast(err.message, 'bad');
-    }
-  });
+  window.location.href = '/?login=1';
 }
 
 /* -------------------------------- inicio -------------------------------- */
@@ -1331,6 +1305,20 @@ async function renderSettings() {
   });
   $('#tpl-reset').addEventListener('click', () => {
     $('#tpl').value = tpl.default;
+  });
+
+  view.append(h(`
+    <div class="panel">
+      <h2>Sesion</h2>
+      <div class="summary">
+        <div class="line"><span class="k">Conectado como</span><span class="v">${esc(state.user)}</span></div>
+      </div>
+      <button class="btn bad mt" id="logout" type="button">CERRAR SESION</button>
+    </div>
+  `));
+  $('#logout').addEventListener('click', async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/';
   });
 }
 

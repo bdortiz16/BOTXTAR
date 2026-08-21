@@ -38,12 +38,32 @@ function passwordMatches(expected, given) {
   return crypto.timingSafeEqual(a, b);
 }
 
-function login(user, password) {
+function session(user) {
+  return { user, exp: Date.now() + config.sessionHours * 3600 * 1000 };
+}
+
+/**
+ * Comprueba las credenciales contra las cuentas guardadas en la base y, si no
+ * hay coincidencia, contra las de APP_USERS.
+ *
+ * Se mantienen las dos vias a proposito: APP_USERS sigue sirviendo para
+ * arrancar o para recuperar el acceso si alguien se queda fuera, y las cuentas
+ * de la base son las que se crean desde la pagina.
+ */
+async function login(user, password) {
   const key = String(user || '').trim().toLowerCase();
+  if (!key || !password) return null;
+
+  const users = require('./users');
+  const row = await users.findByUsername(key);
+  if (row && Number(row.active) === 1 && await users.verifyPassword(password, row.password_hash)) {
+    await users.touchLogin(row.id);
+    return session(key);
+  }
+
   const expected = config.users.get(key);
-  if (!expected) return null;
-  if (!passwordMatches(expected, password)) return null;
-  return { user: key, exp: Date.now() + config.sessionHours * 3600 * 1000 };
+  if (expected && passwordMatches(expected, password)) return session(key);
+  return null;
 }
 
 function parseCookies(header) {
@@ -73,12 +93,11 @@ function clearSessionCookie(res) {
 }
 
 /**
- * Si no hay usuarios configurados (APP_USERS / ADMIN_PASSWORD), la app corre
- * abierta: util para probar en local, nunca para produccion. El servidor lo
- * advierte al arrancar.
+ * Exige sesion salvo que se haya pedido ALLOW_ANONYMOUS de forma explicita,
+ * que solo funciona fuera de produccion.
  */
 function requireAuth(req, res, next) {
-  if (!config.authEnabled) {
+  if (config.allowAnonymous) {
     req.user = 'local';
     return next();
   }

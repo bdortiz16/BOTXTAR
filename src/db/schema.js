@@ -111,6 +111,17 @@ function ddl({ pk }) {
     )`,
     'CREATE INDEX IF NOT EXISTS idx_usdt_op ON usdt_sales(operation_id)',
 
+    `CREATE TABLE IF NOT EXISTS users (
+      id            ${pk},
+      username      TEXT NOT NULL UNIQUE,
+      name          TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL,
+      role          TEXT NOT NULL DEFAULT 'OPERATOR',
+      active        INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT NOT NULL,
+      last_login_at TEXT
+    )`,
+
     `CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL

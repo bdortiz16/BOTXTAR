@@ -74,17 +74,31 @@ PGTEST_URL=postgres://usuario@host:5432 npm run test:pg   # contra Postgres
 | Variable | Para que sirve |
 | --- | --- |
 | `POSTGRES_URL` / `DATABASE_URL` | Base Postgres. **Obligatoria en Vercel.** Si no esta, se usa SQLite en disco. |
+| `SESSION_SECRET` | Firma de la sesion. Obligatoria en produccion. |
+| `SIGNUP_CODE` | Codigo de invitacion para crear cuentas desde la pagina. |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de BotFather. Sin el, la app guarda pero no envia. |
 | `TELEGRAM_FALLBACK_CHAT_ID` | Grupo para los paises que aun no tienen el suyo. |
-| `APP_USERS` | Operadores, como `bryan:clave,jose:otraclave`. |
-| `SESSION_SECRET` | Firma de la sesion. Obligatoria en produccion. |
+| `APP_USERS` | Cuentas de respaldo por variable, como `bryan:clave`. Opcional. |
 | `TIMEZONE` | Zona horaria de la fecha por defecto y los informes. |
 | `DB_FILE` | Ruta del archivo SQLite, solo si no se usa Postgres. |
+| `ALLOW_ANONYMOUS` | Modo sin clave para trastear en local. Se ignora en produccion. |
 
 > En produccion la app **no atiende peticiones** si falta `SESSION_SECRET`,
-> si no hay usuarios configurados, o si corre en serverless sin Postgres.
-> Devuelve un error explicando que falta, en vez de perder datos o cerrar
-> sesiones sin motivo aparente.
+> si no hay forma de controlar quien entra, o si corre en serverless sin
+> Postgres. Muestra una pantalla explicando que falta, en vez de perder datos
+> o cerrar sesiones sin motivo aparente.
+
+### Cuentas
+
+La pagina publica (`/`) tiene **Ingresar** y **Crear cuenta**; la aplicacion
+vive en `/app`.
+
+- La **primera cuenta** se puede crear sin codigo y queda como administrador.
+- A partir de ahi hace falta `SIGNUP_CODE`. Si no esta definido, el registro
+  queda cerrado. Configuralo apenas crees tu cuenta.
+- Las claves se guardan con **scrypt**, con sal distinta por usuario. Nunca se
+  guarda ni se registra la clave en claro.
+- `APP_USERS` sigue funcionando como respaldo, util si alguien se queda fuera.
 
 ### Conectar los grupos de Telegram
 
@@ -192,9 +206,13 @@ src/
   report.js       informe contable y exportacion a CSV
   routes/api.js   API HTTP
   auth.js         sesion firmada con HMAC, sin dependencias
+  users.js        cuentas y cifrado de claves con scrypt
+  setup-page.js   pantalla de que falta configurar
 api/index.js      punto de entrada para Vercel
-public/           interfaz movil (HTML, CSS y JS sin framework)
-test/             46 pruebas, que corren contra SQLite y contra Postgres
+public/
+  index.html      pagina publica de botxtar.com
+  app.html        la aplicacion
+test/             67 pruebas, que corren contra SQLite y contra Postgres
 ```
 
 Toda la capa de datos habla el mismo SQL: lo unico que cambia entre motores es

@@ -3,21 +3,323 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1b1d21">
-<title>BOTXTAR · Envios</title>
-<link rel="stylesheet" href="/styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💸</text></svg>">
+<meta name="theme-color" content="#14120f">
+<title>BOTXTAR · Contabilidad y cierres para casas de remesas</title>
+<meta name="description" content="Registra cada envio, reparte el monto en las cuentas que pida el cliente, avisa al grupo de Telegram del pais y cierra el dia cuadrado.">
+<meta property="og:title" content="BOTXTAR">
+<meta property="og:description" content="Contabilidad y cierres para casas de remesas.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%235b3fd9'/><text x='50' y='72' font-size='62' font-family='Georgia,serif' fill='white' text-anchor='middle'>B</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/landing.css">
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <button class="iconbtn hidden" id="btn-back" aria-label="Atras">‹</button>
-      <h1 id="title">BOTXTAR<span class="sub" id="subtitle">Cargando…</span></h1>
-      <button class="iconbtn" id="btn-report" aria-label="Informe" title="Informe">📊</button>
-      <button class="iconbtn" id="btn-settings" aria-label="Ajustes" title="Ajustes">⚙️</button>
-    </header>
-    <main id="view"></main>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/">BOTX<span>T</span>AR</a>
+    <nav class="navlinks">
+      <a href="#como">Como funciona</a>
+      <a href="#cierre">El cierre</a>
+      <a href="#telegram">El aviso</a>
+    </nav>
+    <button class="btn plain" data-open="login">Ingresar</button>
+    <button class="btn" data-open="register">Crear cuenta</button>
   </div>
-  <script src="/app.js"></script>
+</header>
+
+<main>
+
+<!-- ------------------------------- hero -------------------------------- -->
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Contabilidad y cierres · casas de remesas</p>
+      <h1>Tu operación de remesas, cuadrada <em>al peso</em>.</h1>
+      <p class="lede">
+        Registras el monto y la tasa. BOTXTAR calcula el total, controla el reparto
+        cuando el cliente pide varias cuentas, avisa al grupo de Telegram del país
+        y te deja el cierre del día listo para conciliar contra el banco.
+      </p>
+      <div class="hero-cta">
+        <button class="btn big" data-open="register">Crear cuenta</button>
+        <button class="btn line big" data-open="login">Ya tengo cuenta</button>
+      </div>
+      <p class="countries">
+        Perú · Chile · Brasil · México · Colombia · Venezuela · Ecuador · USDT<br>
+        y cualquier otro país que agregues, con su moneda y su grupo.
+      </p>
+    </div>
+
+    <!-- El artefacto: un cierre real, no un dibujo decorativo. -->
+    <div class="ledger" aria-label="Ejemplo de cierre del dia">
+      <div class="ledger-head">
+        <span>Cierre del día</span>
+        <span>20/08/2026</span>
+      </div>
+      <div class="ledger-row">
+        <span class="k">Recibido en Perú<small>14 operaciones</small></span>
+        <span class="v">88.400,00 PEN</span>
+      </div>
+      <div class="ledger-row">
+        <span class="k">Recibido en Brasil<small>9 operaciones</small></span>
+        <span class="v">41.250,00 BRL</span>
+      </div>
+      <div class="ledger-row">
+        <span class="k">Recibido en Chile<small>6 operaciones</small></span>
+        <span class="v">7.310.000 CLP</span>
+      </div>
+      <div class="ledger-row">
+        <span class="k">Venta de USDT<small>red TRON</small></span>
+        <span class="v pos">12.500,00 USDT</span>
+      </div>
+      <div class="ledger-row total">
+        <span class="k">Pagado en Colombia</span>
+        <span class="v">396.470.000 COP</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------------------- como funciona --------------------------- -->
+<section id="como">
+  <div class="wrap">
+    <p class="eyebrow">Como funciona</p>
+    <h2>Tres pasos, y el registro contable queda hecho.</h2>
+    <p class="section-lede">
+      No hay que llenar diez páginas de formulario ni escribir el total a mano.
+      Cada envío deja su asiento apenas se envía.
+    </p>
+
+    <div class="steps">
+      <article class="step">
+        <div class="num">01</div>
+        <div>
+          <h3>Registras el envío</h3>
+          <p>
+            Eliges la fecha, el país y escribes monto y tasa. El total lo calcula
+            el sistema y lo ves mientras escribes.
+          </p>
+        </div>
+        <div class="aside">10.000 PEN × 1.000<br>= 10.000.000 COP</div>
+      </article>
+
+      <article class="step">
+        <div class="num">02</div>
+        <div>
+          <h3>Repartes en las cuentas que pida el cliente</h3>
+          <p>
+            Una cuenta o cinco. La primera llega con el total completo; cada cuenta
+            nueva, con lo que falta. Si la suma no da exacta, no se puede enviar.
+          </p>
+        </div>
+        <div class="aside">3.000.000 + 3.000.000<br>+ 4.000.000<br>Restante: 0</div>
+      </article>
+
+      <article class="step">
+        <div class="num">03</div>
+        <div>
+          <h3>El grupo recibe el pago</h3>
+          <p>
+            El mensaje llega al grupo de Telegram del país con el banco, la cuenta,
+            el documento y el monto. Un toque copia cada número.
+          </p>
+        </div>
+        <div class="aside">Un solo bot<br>un grupo por país</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------ el reparto ---------------------------- -->
+<section id="reparto">
+  <div class="wrap two">
+    <div>
+      <p class="eyebrow">El control que faltaba</p>
+      <h2>El reparto cuadra, o no sale.</h2>
+      <p class="section-lede" style="margin-bottom:0">
+        Fraccionar un envío en varias cuentas es donde se cuelan los descuadres.
+        La barra muestra cuánto falta mientras escribes, y el servidor vuelve a
+        revisar la suma antes de guardar nada.
+      </p>
+      <ul class="checks">
+        <li>Los importes se calculan con aritmética exacta, no con decimales que se redondean solos.</li>
+        <li>Cada moneda usa sus decimales reales: el peso colombiano no lleva centavos.</li>
+        <li>Escribes el monto como quieras — 10000, 10.000.000, 1.234,56 — y el campo lo ordena.</li>
+      </ul>
+    </div>
+
+    <div>
+      <div class="split" aria-label="Ejemplo de reparto en tres cuentas">
+        <div class="split-row"><span>1 · Bancolombia · Ahorros</span><span class="v">3.000.000</span></div>
+        <div class="split-row"><span>2 · Nequi · Digital</span><span class="v">3.000.000</span></div>
+        <div class="split-row"><span>3 · Davivienda · Corriente</span><span class="v">4.000.000</span></div>
+        <div class="split-foot">
+          <span>Total 10.000.000</span>
+          <span>Repartido 10.000.000</span>
+          <span class="rest">Restante 0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------ el cierre ----------------------------- -->
+<section id="cierre" class="paper">
+  <div class="wrap">
+    <p class="eyebrow">El cierre</p>
+    <h2>El informe sale del día, no de tu memoria.</h2>
+    <p class="section-lede">
+      Totales por moneda, sin mezclar soles con pesos. Se exporta con una fila por
+      cuenta destino, que es como se concilia contra el extracto del banco.
+    </p>
+
+    <div class="scroll-x">
+      <table class="close">
+        <thead>
+          <tr>
+            <th>Folio</th><th>País</th><th>Recibido</th><th>Tasa</th>
+            <th>Entrega</th><th>Cuentas</th><th>Pagado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>20260820-001</td><td>Perú</td><td>10.000,00 PEN</td><td>1.000</td><td>Transferencia</td><td>3</td><td>10.000.000</td></tr>
+          <tr><td>20260820-002</td><td>Brasil</td><td>5.100,00 BRL</td><td>564</td><td>Transferencia</td><td>1</td><td>2.876.400</td></tr>
+          <tr><td>20260820-003</td><td>Chile</td><td>850.000 CLP</td><td>4,12</td><td>Efectivo</td><td>1</td><td>3.502.000</td></tr>
+          <tr><td>20260820-004</td><td>Perú</td><td>3.200,00 PEN</td><td>1.002</td><td>Transferencia</td><td>2</td><td>3.206.400</td></tr>
+          <tr><td colspan="6">Total del día</td><td>19.584.800 COP</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ----------------------------- el mensaje ----------------------------- -->
+<section id="telegram">
+  <div class="wrap two">
+    <div>
+      <p class="eyebrow">El aviso</p>
+      <h2>Lo que llega al grupo, listo para pagar.</h2>
+      <p class="section-lede" style="margin-bottom:0">
+        Cada país tiene su grupo y un solo bot los atiende todos. El mensaje trae
+        la referencia del pago, la tasa y la moneda — y las cuentas y documentos
+        se copian de un toque, sin que Telegram los convierta en llamadas.
+      </p>
+      <ul class="checks">
+        <li>Si el envío va fraccionado, cada cuenta sale numerada con su monto.</li>
+        <li>Las entregas en efectivo llevan ciudad, punto, quién recibe y hora.</li>
+        <li>El formato se edita desde la app, sin tocar código.</li>
+      </ul>
+    </div>
+
+    <div>
+      <p class="tg-caption">Grupo · Perú — pagos de clientes</p>
+      <div class="tg">📍 <b>NUEVO PAGO</b> · <span class="code">20260820-001</span>
+🗓 20/8/2026 13:40:50
+🇵🇪 Perú ➡️ 🇨🇴 Colombia
+
+💵 Monto: <b>10.000,00 PEN</b>
+📈 Tasa: <b>1.000</b>
+💰 Total: <b>10.000.000 COP</b>
+
+🏦 <b>REPARTIDO EN 3 CUENTAS</b>
+
+<b>1/3</b> · <b>BANCOLOMBIA</b>
+Ana Pérez
+AHORROS · <span class="code">11548736279</span>
+CEDULA <span class="code">1088354953</span>
+💸 <b>3.000.000 COP</b>
+
+<b>2/3</b> · <b>NEQUI</b>
+Luis Gómez
+DIGITAL · <span class="code">3001234567</span>
+💸 <b>3.000.000 COP</b>
+
+<b>3/3</b> · <b>DAVIVIENDA</b>
+Sara Díaz
+CORRIENTE · <span class="code">9876543210</span>
+💸 <b>4.000.000 COP</b></div>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------- cierre ------------------------------ -->
+<section class="cta-band">
+  <div class="wrap">
+    <p class="eyebrow">Empezar</p>
+    <h2>Crea tu cuenta y registra el primer envío.</h2>
+    <p class="section-lede">
+      Si tu empresa ya usa BOTXTAR, pide el código de invitación al administrador.
+    </p>
+    <button class="btn big" data-open="register">Crear cuenta</button>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>BOTXTAR — contabilidad y cierres de remesas</span>
+    <span class="sep"><a href="/app">Ir a la aplicación</a></span>
+  </div>
+</footer>
+
+<!-- ------------------------------- ventana ------------------------------ -->
+<dialog class="modal" id="modal">
+  <button class="modal-close" type="button" data-close aria-label="Cerrar">×</button>
+  <div class="modal-head" role="tablist">
+    <button class="tab" role="tab" id="tab-login" aria-selected="true">Ingresar</button>
+    <button class="tab" role="tab" id="tab-register" aria-selected="false">Crear cuenta</button>
+  </div>
+
+  <div class="modal-body">
+    <div id="msg"></div>
+
+    <form id="form-login">
+      <h3>Entrar a tu cuenta</h3>
+      <p class="hint">Usa el mismo usuario con el que creaste la cuenta.</p>
+      <div class="field">
+        <label for="li-user">Usuario</label>
+        <input id="li-user" name="username" autocomplete="username" autocapitalize="none" required>
+      </div>
+      <div class="field">
+        <label for="li-pass">Clave</label>
+        <input id="li-pass" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn block big" type="submit">Ingresar</button>
+    </form>
+
+    <form id="form-register" hidden>
+      <h3>Crear tu cuenta</h3>
+      <p class="hint" id="reg-hint">Comprobando…</p>
+      <div class="field">
+        <label for="re-name">Nombre</label>
+        <input id="re-name" name="name" autocomplete="name" placeholder="Como te ven en el grupo">
+      </div>
+      <div class="field">
+        <label for="re-user">Usuario</label>
+        <input id="re-user" name="username" autocomplete="username" autocapitalize="none" required
+               placeholder="bryan o tu correo">
+        <p class="sub">Con este entras. Puede ser un nombre corto o tu correo.</p>
+      </div>
+      <div class="field">
+        <label for="re-pass">Clave</label>
+        <input id="re-pass" name="password" type="password" autocomplete="new-password" required
+               minlength="8">
+        <p class="sub">Mínimo 8 caracteres.</p>
+      </div>
+      <div class="field" id="code-field" hidden>
+        <label for="re-code">Código de invitación</label>
+        <input id="re-code" name="code" autocomplete="off">
+        <p class="sub">Te lo da el administrador de tu empresa.</p>
+      </div>
+      <button class="btn block big" type="submit">Crear cuenta</button>
+    </form>
+  </div>
+</dialog>
+
+<script src="/landing.js"></script>
 </body>
 </html>

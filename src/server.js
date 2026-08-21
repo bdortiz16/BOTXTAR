@@ -48,9 +48,19 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   maxAge: config.env === 'production' ? '1h' : 0,
 }));
 
-// La interfaz es una sola pagina: cualquier ruta no-API devuelve el index.
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+
+/**
+ * Dos entradas: `/` es la pagina publica de botxtar.com y `/app` es la
+ * aplicacion. Todo lo que cuelgue de /app lo resuelve la propia aplicacion,
+ * que es una sola pagina.
+ */
+app.get(/^\/app(\/.*)?$/, (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'app.html'));
+});
+
 app.get(/^\/(?!api\/).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // Manejador de errores: los de validacion salen como 400 con texto legible.

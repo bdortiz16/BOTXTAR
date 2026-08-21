@@ -9,6 +9,7 @@ const ops = require('../operations');
 const telegram = require('../telegram');
 const report = require('../report');
 const auth = require('../auth');
+const users = require('../users');
 
 const router = express.Router();
 const { ValidationError } = money;
@@ -24,12 +25,41 @@ function slugify(s) {
 
 /* ------------------------------ sesion ---------------------------------- */
 
-router.post('/auth/login', (req, res) => {
-  const session = auth.login(req.body?.user, req.body?.password);
-  if (!session) return res.status(401).json({ error: 'Usuario o clave incorrectos' });
+router.post('/auth/login', wrap(async (req, res) => {
+  const session = await auth.login(req.body?.user, req.body?.password);
+  if (!session) {
+    return res.status(401).json({
+      error: 'Usuario o clave incorrectos. Revisa que el usuario sea el mismo con el que creaste la cuenta.',
+    });
+  }
   auth.setSessionCookie(res, session);
   res.json({ user: session.user });
-});
+}));
+
+/** Alta de cuenta desde la pagina publica. */
+router.post('/auth/register', wrap(async (req, res) => {
+  const permission = await users.canRegister(req.body?.code);
+  if (!permission.ok) return res.status(403).json({ error: permission.reason });
+
+  const created = await users.create({
+    username: req.body?.user,
+    password: req.body?.password,
+    name: req.body?.name,
+    role: permission.role,
+  });
+  auth.setSessionCookie(res, { user: created.username, exp: Date.now() + 12 * 3600 * 1000 });
+  res.status(201).json({ user: created.username, role: created.role });
+}));
+
+/** Le dice a la pagina si el registro esta abierto y si pedira codigo. */
+router.get('/auth/signup-state', wrap(async (req, res) => {
+  const total = await users.count();
+  res.json({
+    first_account: total === 0,
+    code_required: Boolean(config.signupCode),
+    open: total === 0 || Boolean(config.signupCode),
+  });
+}));
 
 router.post('/auth/logout', (req, res) => {
   auth.clearSessionCookie(res);
@@ -37,7 +67,7 @@ router.post('/auth/logout', (req, res) => {
 });
 
 router.get('/auth/me', (req, res) => {
-  if (!config.authEnabled) return res.json({ user: 'local', auth_required: false });
+  if (config.allowAnonymous) return res.json({ user: 'local', auth_required: false });
   const session = auth.verify(auth.parseCookies(req.headers.cookie)[auth.COOKIE]);
   if (!session) return res.status(401).json({ error: 'No autenticado', auth_required: true });
   res.json({ user: session.user, auth_required: true });
